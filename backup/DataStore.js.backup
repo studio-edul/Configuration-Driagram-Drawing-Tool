@@ -1,0 +1,57 @@
+export class DataStore {
+    constructor() {
+        this.projectData = {
+            meta: {
+                mode: 'LOGICAL', // 'LOGICAL' | 'PHYSICAL' | 'REQUEST'
+                floorPlanImage: null,
+                bomMetadata: {}
+            },
+            nodes: {},
+            requests: {}
+        };
+        this.listeners = [];
+    }
+
+    // Get the entire state
+    getState() {
+        return this.projectData;
+    }
+
+    addNode(node) {
+        this.projectData.nodes[node.id] = node;
+        this.notify();
+    }
+
+    // Update specific part of state
+    updateNode(nodeId, updates) {
+        if (!this.projectData.nodes[nodeId]) {
+            this.projectData.nodes[nodeId] = {};
+        }
+        this.projectData.nodes[nodeId] = { ...this.projectData.nodes[nodeId], ...updates };
+        this.notify();
+    }
+
+    addRequest(request) {
+        this.projectData.requests[request.id] = request;
+        this.notify();
+    }
+
+    setMode(mode) {
+        this.projectData.meta.mode = mode;
+        this.notify();
+    }
+
+    updateMeta(updates) {
+        this.projectData.meta = { ...this.projectData.meta, ...updates };
+        this.notify();
+    }
+
+    // Observer pattern
+    subscribe(listener) {
+        this.listeners.push(listener);
+    }
+
+    notify() {
+        this.listeners.forEach(listener => listener(this.projectData));
+    }
+}
