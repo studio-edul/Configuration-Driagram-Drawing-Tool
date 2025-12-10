@@ -239,6 +239,14 @@ export class Visualizer {
             const data = this.dataStore.getState();
             const mode = data.meta.mode;
 
+<<<<<<< HEAD
+            // Don't render canvas in HARDWARE_LIST mode
+            if (mode === 'HARDWARE_LIST') {
+                return;
+            }
+
+=======
+>>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
             // Clean up invalid selections (nodes that no longer exist)
             const existingNodeIds = new Set(Object.keys(data.nodes || {}));
             const validSelections = new Set();

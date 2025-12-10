@@ -176,13 +176,34 @@ export class InteractionManager {
             return;
         }
 
+<<<<<<< HEAD
+        // Get Router color for UTP and Wireless cables
+        let connectionColor = cable.color;
+        if (cable.type === 'UTP' || cable.type === 'Wireless') {
+            // Find Router color from hardware list
+            const hardwareList = this.dataStore.getState().meta.hardwareList || [];
+            const router = hardwareList.find(item => item.type === 'Router');
+            if (router && router.color) {
+                connectionColor = router.color;
+            } else {
+                // Fallback to default Router color
+                connectionColor = '#3b82f6';
+            }
+        }
+
+=======
+>>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
         const connectionId = `conn-${Date.now()}`;
         const newConnection = {
             id: connectionId,
             source: sourceNodeId,
             target: targetNodeId,
             type: cable.type,
+<<<<<<< HEAD
+            color: connectionColor,
+=======
             color: cable.color,
+>>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
             category: cable.category,
             model: cable.model
         };

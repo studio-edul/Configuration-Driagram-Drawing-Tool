@@ -39,4 +39,107 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
+<<<<<<< HEAD
+}
+
+/* Hardware List Table Styles */
+#hardware-list-table-imfine,
+#hardware-list-table-local {
+    font-size: 14px;
+    table-layout: fixed;
+    width: 100%;
+}
+
+#hardware-list-table-imfine th,
+#hardware-list-table-local th {
+    font-weight: 600;
+}
+
+#hardware-list-table-imfine thead tr:first-child th,
+#hardware-list-table-local thead tr:first-child th {
+    background-color: #000;
+    color: #fff;
+}
+
+#hardware-list-table-imfine thead tr:last-child th {
+    background-color: #fee2e2; /* red-100 (pink) */
+    color: #000;
+}
+
+#hardware-list-table-local thead tr:last-child th {
+    background-color: #e0f2fe; /* sky-50 */
+    color: #000;
+}
+
+/* Column widths - same for both tables */
+#hardware-list-table-imfine th:nth-child(1),
+#hardware-list-table-local th:nth-child(1),
+#hardware-list-table-imfine td:nth-child(1),
+#hardware-list-table-local td:nth-child(1) {
+    width: 20%; /* Hardware */
+    position: relative;
+}
+
+#hardware-list-table-imfine th:nth-child(2),
+#hardware-list-table-local th:nth-child(2),
+#hardware-list-table-imfine td:nth-child(2),
+#hardware-list-table-local td:nth-child(2) {
+    width: 25%; /* Model */
+}
+
+#hardware-list-table-imfine th:nth-child(3),
+#hardware-list-table-local th:nth-child(3),
+#hardware-list-table-imfine td:nth-child(3),
+#hardware-list-table-local td:nth-child(3) {
+    width: 3.5%; /* EA - 50% of original 7% */
+}
+
+#hardware-list-table-imfine th:nth-child(4),
+#hardware-list-table-local th:nth-child(4),
+#hardware-list-table-imfine td:nth-child(4),
+#hardware-list-table-local td:nth-child(4) {
+    width: 5%; /* R&R - 50% of original 10% */
+}
+
+#hardware-list-table-imfine th:nth-child(5),
+#hardware-list-table-local th:nth-child(5),
+#hardware-list-table-imfine td:nth-child(5),
+#hardware-list-table-local td:nth-child(5) {
+    width: 46.5%; /* Remark - expanded from 38% */
+    text-align: center; /* Center align Remark */
+}
+
+#hardware-list-table-imfine td input[type="text"],
+#hardware-list-table-local td input[type="text"] {
+    width: 100%;
+    padding: 4px;
+}
+
+#hardware-list-table-imfine td input[type="text"]:focus,
+#hardware-list-table-local td input[type="text"]:focus {
+    background-color: #fff !important;
+    border: 1px solid #3b82f6;
+    border-radius: 2px;
+}
+
+.custom-checkbox {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 2px solid #94a3b8;
+    border-radius: 3px;
+    background-color: #e0f2fe; /* sky-50 - default color */
+    position: absolute;
+    left: 0;
+    transition: background-color 0.2s, border-color 0.2s;
+    margin-left: 4px;
+}
+
+.custom-checkbox:checked {
+    background-color: #fee2e2; /* red-50 (pink) - checked color */
+    border-color: #f87171; /* red-400 */
+=======
+>>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
 }

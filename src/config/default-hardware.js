@@ -5,7 +5,11 @@ export const DEFAULT_HARDWARE = [
     { type: 'Mobile', model: '', color: '#ec4899', category: 'Device' },
     { type: 'Display', model: '', color: '#f59e0b', category: 'Device' },
     { type: 'LED', model: '', color: '#10b981', category: 'Device' },
+<<<<<<< HEAD
+    { type: 'Projector', model: '', color: '#6366f1', category: 'Device' },
+=======
     { type: 'Projector', model: '', color: '#ef4444', category: 'Device' },
+>>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
     { type: 'Touch Display', model: '', color: '#06b6d4', category: 'Device' },
 
     { type: 'UTP', model: 'UTP', color: '#3b82f6', category: 'Cable' },

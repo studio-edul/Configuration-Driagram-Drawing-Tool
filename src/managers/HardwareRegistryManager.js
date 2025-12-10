@@ -1,6 +1,10 @@
 import { DEFAULT_HARDWARE } from '../config/default-hardware.js';
 
+<<<<<<< HEAD
+// Available colors for hardware (excluding red colors)
+=======
 // Available colors for hardware (excluding red #ef4444 used by Projector)
+>>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
 const AVAILABLE_COLORS = [
     '#22c55e', // green-500
     '#3b82f6', // blue-500
@@ -47,11 +51,30 @@ export class HardwareRegistryManager {
         // Initialize with defaults if empty
         const currentList = this.dataStore.getState().meta.hardwareList;
         if (!currentList || currentList.length === 0) {
+<<<<<<< HEAD
+            // Add id to default hardware items and ensure unique colors
+            const usedColors = new Set();
+            const defaultHardwareWithIds = DEFAULT_HARDWARE.map((item, index) => {
+                let color = item.color;
+                // If color is already used, find an unused color
+                if (usedColors.has(color)) {
+                    const availableColors = AVAILABLE_COLORS.filter(c => !usedColors.has(c));
+                    color = availableColors[0] || AVAILABLE_COLORS[0];
+                }
+                usedColors.add(color);
+                return {
+                    ...item,
+                    id: `default-${index}`,
+                    color: color
+                };
+            });
+=======
             // Add id to default hardware items
             const defaultHardwareWithIds = DEFAULT_HARDWARE.map((item, index) => ({
                 ...item,
                 id: `default-${index}`
             }));
+>>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
             this.dataStore.updateMeta({ hardwareList: defaultHardwareWithIds });
         }
 
@@ -79,16 +102,31 @@ export class HardwareRegistryManager {
     getUnusedColor() {
         const currentList = this.dataStore.getState().meta.hardwareList || [];
         const usedColors = new Set(currentList.map(item => item.color).filter(Boolean));
+<<<<<<< HEAD
+        
+        // Exclude red colors
+        const redColors = ['#ef4444', '#f87171', '#dc2626', '#fee2e2', '#fca5a5', '#991b1b', '#be123c'];
+        const availableColors = AVAILABLE_COLORS.filter(color => !redColors.includes(color.toLowerCase()));
+
+        // Find first unused color from available colors (excluding red)
+        for (const color of availableColors) {
+=======
 
         // Find first unused color from available colors
         for (const color of AVAILABLE_COLORS) {
+>>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
             if (!usedColors.has(color)) {
                 return color;
             }
         }
 
+<<<<<<< HEAD
+        // If all colors are used, return first available non-red color
+        return availableColors[0] || AVAILABLE_COLORS[0];
+=======
         // If all colors are used, return first available color
         return AVAILABLE_COLORS[0];
+>>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
     }
 
     openModal(item = null) {
@@ -143,8 +181,24 @@ export class HardwareRegistryManager {
                 this.dataStore.updateNodesByHardware(oldItem, item);
             }
         } else {
+<<<<<<< HEAD
+            // Add new - ensure color doesn't conflict
+            item.id = Date.now().toString();
+            if (!item.color || item.color === '#ef4444') {
+                // If no color specified or red color, use unused color
+                item.color = this.getUnusedColor();
+            } else {
+                // Check if color is already used
+                const usedColors = new Set(currentList.map(i => i.color).filter(Boolean));
+                if (usedColors.has(item.color)) {
+                    // Color conflict - use unused color instead
+                    item.color = this.getUnusedColor();
+                }
+            }
+=======
             // Add new
             item.id = Date.now().toString();
+>>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
             newList = [...currentList, item];
         }
 
@@ -168,9 +222,27 @@ export class HardwareRegistryManager {
             return;
         }
 
+<<<<<<< HEAD
+        // Find Router color for UTP and Wireless
+        const router = list.find(item => item.type === 'Router');
+        const routerColor = router?.color || '#3b82f6';
+
+        // Update UTP and Wireless colors to match Router
+        const updatedList = list.map(item => {
+            if ((item.type === 'UTP' || item.type === 'Wireless') && item.color !== routerColor) {
+                return { ...item, color: routerColor };
+            }
+            return item;
+        });
+
+        // Group by category
+        const devices = updatedList.filter(item => item.category === 'Device');
+        const cables = updatedList.filter(item => item.category === 'Cable');
+=======
         // Group by category
         const devices = list.filter(item => item.category === 'Device');
         const cables = list.filter(item => item.category === 'Cable');
+>>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
 
         // Render Device section
         if (devices.length > 0) {
@@ -247,7 +319,20 @@ export class HardwareRegistryManager {
         el.draggable = item.category !== 'Cable';
         el.dataset.type = item.type;
         el.dataset.model = item.model;
+<<<<<<< HEAD
+        
+        // Get Router color for UTP and Wireless
+        let displayColor = item.color;
+        if (item.type === 'UTP' || item.type === 'Wireless') {
+            const hardwareList = this.dataStore.getState().meta.hardwareList || [];
+            const router = hardwareList.find(hw => hw.type === 'Router');
+            displayColor = router?.color || '#3b82f6';
+        }
+        
+        el.dataset.color = displayColor;
+=======
         el.dataset.color = item.color;
+>>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
         el.dataset.category = item.category;
 
         // Different cursor and styling for cables
@@ -257,8 +342,13 @@ export class HardwareRegistryManager {
         // Icon based on type or category
         let iconName = this.getIconName(item.type, item.category);
 
+<<<<<<< HEAD
+        // Color box style - use displayColor for UTP/Wireless
+        const colorStyle = `background-color: ${displayColor || '#ccc'};`;
+=======
         // Color box style
         const colorStyle = `background-color: ${item.color || '#ccc'};`;
+>>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
 
         el.innerHTML = `
             <div class="flex items-center gap-3">

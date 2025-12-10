@@ -2,9 +2,17 @@ export class DataStore {
     constructor() {
         this.projectData = {
             meta: {
+<<<<<<< HEAD
+                mode: 'LOGICAL', // 'LOGICAL' | 'PHYSICAL' | 'REQUEST' | 'HARDWARE_LIST'
+                floorPlanImage: null,
+                bomMetadata: {},
+                hardwareListMetadata: {}, // Store remark and other metadata for hardware list items
+                projectName: 'The First Look 2026' // Project name for hardware list tables
+=======
                 mode: 'LOGICAL', // 'LOGICAL' | 'PHYSICAL' | 'REQUEST'
                 floorPlanImage: null,
                 bomMetadata: {}
+>>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
             },
             nodes: {},
             connections: {},
