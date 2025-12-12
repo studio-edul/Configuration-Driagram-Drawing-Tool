@@ -2,20 +2,16 @@ export class DataStore {
     constructor() {
         this.projectData = {
             meta: {
-<<<<<<< HEAD
                 mode: 'LOGICAL', // 'LOGICAL' | 'PHYSICAL' | 'REQUEST' | 'HARDWARE_LIST'
                 floorPlanImage: null,
                 bomMetadata: {},
                 hardwareListMetadata: {}, // Store remark and other metadata for hardware list items
                 projectName: 'The First Look 2026' // Project name for hardware list tables
-=======
-                mode: 'LOGICAL', // 'LOGICAL' | 'PHYSICAL' | 'REQUEST'
-                floorPlanImage: null,
-                bomMetadata: {}
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
             },
             nodes: {},
             connections: {},
+            networkNodes: {},
+            networkConnections: {},
             requests: {}
         };
         this.listeners = [];
@@ -27,16 +23,24 @@ export class DataStore {
     }
 
     addNode(node) {
-        this.projectData.nodes[node.id] = node;
+        const mode = this.projectData.meta.mode;
+        if (mode === 'NETWORK') {
+            this.projectData.networkNodes[node.id] = node;
+        } else {
+            this.projectData.nodes[node.id] = node;
+        }
         this.notify();
     }
 
     // Update specific part of state
     updateNode(nodeId, updates) {
-        if (!this.projectData.nodes[nodeId]) {
-            this.projectData.nodes[nodeId] = {};
+        // Check both collections as we might not know the mode of the caller, 
+        // or just check where the node exists.
+        if (this.projectData.nodes[nodeId]) {
+            this.projectData.nodes[nodeId] = { ...this.projectData.nodes[nodeId], ...updates };
+        } else if (this.projectData.networkNodes[nodeId]) {
+            this.projectData.networkNodes[nodeId] = { ...this.projectData.networkNodes[nodeId], ...updates };
         }
-        this.projectData.nodes[nodeId] = { ...this.projectData.nodes[nodeId], ...updates };
         this.notify();
     }
 
@@ -44,7 +48,11 @@ export class DataStore {
     deleteNode(nodeId) {
         if (this.projectData.nodes[nodeId]) {
             delete this.projectData.nodes[nodeId];
-            this.removeConnectionsForNode(nodeId); // Clean up connections
+            this.removeConnectionsForNode(nodeId, 'STANDARD');
+            this.notify();
+        } else if (this.projectData.networkNodes[nodeId]) {
+            delete this.projectData.networkNodes[nodeId];
+            this.removeConnectionsForNode(nodeId, 'NETWORK');
             this.notify();
         }
     }
@@ -69,7 +77,21 @@ export class DataStore {
     }
 
     addConnection(connection) {
-        this.projectData.connections[connection.id] = connection;
+        const mode = this.projectData.meta.mode;
+        if (mode === 'NETWORK') {
+            this.projectData.networkConnections[connection.id] = connection;
+        } else {
+            this.projectData.connections[connection.id] = connection;
+        }
+        this.notify();
+    }
+
+    updateConnection(connectionId, updates) {
+        if (this.projectData.connections[connectionId]) {
+            this.projectData.connections[connectionId] = { ...this.projectData.connections[connectionId], ...updates };
+        } else if (this.projectData.networkConnections[connectionId]) {
+            this.projectData.networkConnections[connectionId] = { ...this.projectData.networkConnections[connectionId], ...updates };
+        }
         this.notify();
     }
 
@@ -77,11 +99,14 @@ export class DataStore {
         if (this.projectData.connections[connectionId]) {
             delete this.projectData.connections[connectionId];
             this.notify();
+        } else if (this.projectData.networkConnections[connectionId]) {
+            delete this.projectData.networkConnections[connectionId];
+            this.notify();
         }
     }
 
-    removeConnectionsForNode(nodeId) {
-        const connections = this.projectData.connections;
+    removeConnectionsForNode(nodeId, type = 'STANDARD') {
+        const connections = type === 'NETWORK' ? this.projectData.networkConnections : this.projectData.connections;
         let changed = false;
         Object.keys(connections).forEach(connId => {
             const conn = connections[connId];

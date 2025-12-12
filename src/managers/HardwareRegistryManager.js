@@ -1,10 +1,6 @@
 import { DEFAULT_HARDWARE } from '../config/default-hardware.js';
 
-<<<<<<< HEAD
 // Available colors for hardware (excluding red colors)
-=======
-// Available colors for hardware (excluding red #ef4444 used by Projector)
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
 const AVAILABLE_COLORS = [
     '#22c55e', // green-500
     '#3b82f6', // blue-500
@@ -46,12 +42,10 @@ export class HardwareRegistryManager {
     }
 
     init() {
-        console.log('HardwareRegistryManager: Initializing...');
 
         // Initialize with defaults if empty
         const currentList = this.dataStore.getState().meta.hardwareList;
         if (!currentList || currentList.length === 0) {
-<<<<<<< HEAD
             // Add id to default hardware items and ensure unique colors
             const usedColors = new Set();
             const defaultHardwareWithIds = DEFAULT_HARDWARE.map((item, index) => {
@@ -68,13 +62,6 @@ export class HardwareRegistryManager {
                     color: color
                 };
             });
-=======
-            // Add id to default hardware items
-            const defaultHardwareWithIds = DEFAULT_HARDWARE.map((item, index) => ({
-                ...item,
-                id: `default-${index}`
-            }));
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
             this.dataStore.updateMeta({ hardwareList: defaultHardwareWithIds });
         }
 
@@ -96,37 +83,25 @@ export class HardwareRegistryManager {
         const initialList = this.dataStore.getState().meta.hardwareList || [];
         this.renderList(initialList);
 
-        console.log('HardwareRegistryManager: Initialized');
     }
 
     getUnusedColor() {
         const currentList = this.dataStore.getState().meta.hardwareList || [];
         const usedColors = new Set(currentList.map(item => item.color).filter(Boolean));
-<<<<<<< HEAD
-        
+
         // Exclude red colors
         const redColors = ['#ef4444', '#f87171', '#dc2626', '#fee2e2', '#fca5a5', '#991b1b', '#be123c'];
         const availableColors = AVAILABLE_COLORS.filter(color => !redColors.includes(color.toLowerCase()));
 
         // Find first unused color from available colors (excluding red)
         for (const color of availableColors) {
-=======
-
-        // Find first unused color from available colors
-        for (const color of AVAILABLE_COLORS) {
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
             if (!usedColors.has(color)) {
                 return color;
             }
         }
 
-<<<<<<< HEAD
         // If all colors are used, return first available non-red color
         return availableColors[0] || AVAILABLE_COLORS[0];
-=======
-        // If all colors are used, return first available color
-        return AVAILABLE_COLORS[0];
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
     }
 
     openModal(item = null) {
@@ -181,7 +156,6 @@ export class HardwareRegistryManager {
                 this.dataStore.updateNodesByHardware(oldItem, item);
             }
         } else {
-<<<<<<< HEAD
             // Add new - ensure color doesn't conflict
             item.id = Date.now().toString();
             if (!item.color || item.color === '#ef4444') {
@@ -195,10 +169,6 @@ export class HardwareRegistryManager {
                     item.color = this.getUnusedColor();
                 }
             }
-=======
-            // Add new
-            item.id = Date.now().toString();
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
             newList = [...currentList, item];
         }
 
@@ -222,7 +192,6 @@ export class HardwareRegistryManager {
             return;
         }
 
-<<<<<<< HEAD
         // Find Router color for UTP and Wireless
         const router = list.find(item => item.type === 'Router');
         const routerColor = router?.color || '#3b82f6';
@@ -238,11 +207,6 @@ export class HardwareRegistryManager {
         // Group by category
         const devices = updatedList.filter(item => item.category === 'Device');
         const cables = updatedList.filter(item => item.category === 'Cable');
-=======
-        // Group by category
-        const devices = list.filter(item => item.category === 'Device');
-        const cables = list.filter(item => item.category === 'Cable');
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
 
         // Render Device section
         if (devices.length > 0) {
@@ -256,13 +220,20 @@ export class HardwareRegistryManager {
             this.listContainer.appendChild(cableSection);
         }
 
+        // Render Infra section
+        const infra = updatedList.filter(item => item.category === 'Infra');
+        if (infra.length > 0) {
+            const infraSection = this.createCategorySection('Infra', infra, 'infra-section');
+            this.listContainer.appendChild(infraSection);
+        }
+
         // Re-initialize icons
         if (window.lucide) window.lucide.createIcons();
     }
 
     createCategorySection(categoryName, items, sectionId) {
         const section = document.createElement('div');
-        section.className = 'mb-4';
+        // section.className = 'mb-4'; // Removed to rely on space-y-2 from container for consistent spacing
         section.id = sectionId;
 
         const toggleId = `toggle-${sectionId}`;
@@ -319,8 +290,7 @@ export class HardwareRegistryManager {
         el.draggable = item.category !== 'Cable';
         el.dataset.type = item.type;
         el.dataset.model = item.model;
-<<<<<<< HEAD
-        
+
         // Get Router color for UTP and Wireless
         let displayColor = item.color;
         if (item.type === 'UTP' || item.type === 'Wireless') {
@@ -328,11 +298,8 @@ export class HardwareRegistryManager {
             const router = hardwareList.find(hw => hw.type === 'Router');
             displayColor = router?.color || '#3b82f6';
         }
-        
+
         el.dataset.color = displayColor;
-=======
-        el.dataset.color = item.color;
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
         el.dataset.category = item.category;
 
         // Different cursor and styling for cables
@@ -342,33 +309,28 @@ export class HardwareRegistryManager {
         // Icon based on type or category
         let iconName = this.getIconName(item.type, item.category);
 
-<<<<<<< HEAD
         // Color box style - use displayColor for UTP/Wireless
         const colorStyle = `background-color: ${displayColor || '#ccc'};`;
-=======
-        // Color box style
-        const colorStyle = `background-color: ${item.color || '#ccc'};`;
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
 
         el.innerHTML = `
-            <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-md flex items-center justify-center border border-slate-200 shadow-sm" style="${colorStyle}">
-                    <i data-lucide="${iconName}" class="w-4 h-4 text-white mix-blend-hard-light"></i>
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-md flex items-center justify-center border border-slate-200 shadow-sm" style="${colorStyle}">
+                        <i data-lucide="${iconName}" class="w-4 h-4 text-white mix-blend-hard-light"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs font-bold text-slate-700 group-hover:text-slate-900">${item.type}</p>
+                        <p class="text-[10px] text-slate-500">${item.model}</p>
+                    </div>
                 </div>
-                <div>
-                    <p class="text-xs font-bold text-slate-700 group-hover:text-slate-900">${item.type}</p>
-                    <p class="text-[10px] text-slate-500">${item.model}</p>
-                </div>
-            </div>
-            <div class="flex items-center gap-2">
-                <button class="btn-edit p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600 transition-colors">
-                    <i data-lucide="pencil" class="w-3 h-3"></i>
-                </button>
+                <div class="flex items-center gap-2">
+                    <button class="btn-edit p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600 transition-colors">
+                        <i data-lucide="pencil" class="w-3 h-3"></i>
+                    </button>
                 <button class="btn-delete p-1 hover:bg-red-100 rounded text-slate-400 hover:text-red-600 transition-colors">
                     <i data-lucide="trash-2" class="w-3 h-3"></i>
                 </button>
-            </div>
-        `;
+                </div>
+            `;
 
         // Bind Edit Click
         const btnEdit = el.querySelector('.btn-edit');
@@ -401,6 +363,8 @@ export class HardwareRegistryManager {
         if (t.includes('router')) return 'router';
         if (t.includes('switch')) return 'network';
         if (t.includes('ap') || t.includes('access point')) return 'wifi';
+        if (t.includes('220v')) return 'plug';
+        if (t.includes('internet')) return 'globe';
         return 'box';
     }
 }

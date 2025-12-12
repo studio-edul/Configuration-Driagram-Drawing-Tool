@@ -64,12 +64,12 @@ export class HardwareListManager {
 
     handleModeChange(mode) {
         if (mode === 'HARDWARE_LIST') {
-            this.canvasContainer.classList.add('hidden');
+            // Canvas container is hidden by ViewManager
             this.hardwareListView.classList.remove('hidden');
             this.updateProjectNameDisplay();
             this.renderTable();
         } else {
-            this.canvasContainer.classList.remove('hidden');
+            // Canvas container is shown by ViewManager
             this.hardwareListView.classList.add('hidden');
         }
     }

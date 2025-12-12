@@ -1,12 +1,15 @@
-<<<<<<< HEAD
 export class ViewManager {
     constructor(dataStore) {
         this.dataStore = dataStore;
         this.buttons = {
             LOGICAL: document.getElementById('btn-view-logical'),
             PHYSICAL: document.getElementById('btn-view-physical'),
+            NETWORK: document.getElementById('btn-view-network'),
             HARDWARE_LIST: document.getElementById('btn-hardware-list')
         };
+        this.copyButton = document.getElementById('btn-copy-canvas');
+        this.syncButton = document.getElementById('btn-sync-config');
+        this.exportButton = document.getElementById('btn-export-ppt');
 
         this.init();
     }
@@ -19,25 +22,40 @@ export class ViewManager {
             }
         });
 
+        // Bind copy button event
+        if (this.copyButton) {
+            this.copyButton.addEventListener('click', () => this.copyCanvas());
+        }
+
+        // Bind sync button event
+        if (this.syncButton) {
+            this.syncButton.addEventListener('click', () => this.syncFromConfiguration());
+        }
+
+        // Bind export button event
+        if (this.exportButton) {
+            this.exportButton.addEventListener('click', () => this.exportPPT());
+        }
+
         // Subscribe to store changes to update UI
         this.dataStore.subscribe((data) => {
             this.updateUI(data.meta.mode);
         });
 
-        // Initial UI state
-        this.updateUI(this.dataStore.getState().meta.mode);
+        // Initial UI state (with delay to ensure BackgroundManager is initialized)
+        setTimeout(() => {
+            this.updateUI(this.dataStore.getState().meta.mode);
+        }, 100);
     }
 
-    switchMode(newMode) {
-        const currentData = this.dataStore.getState();
+    switchMode(mode) {
+        this.dataStore.setMode(mode);
 
-        // Strategy: Initial Placement when entering PHYSICAL mode
-        if (newMode === 'PHYSICAL') {
-            this.ensurePhysicalPositions(currentData);
+        // If switching to PHYSICAL mode, ensure positions are initialized
+        if (mode === 'PHYSICAL') {
+            const data = this.dataStore.getState();
+            this.ensurePhysicalPositions(data);
         }
-
-        this.dataStore.setMode(newMode);
-        console.log(`ViewManager: Switched to ${newMode}`);
     }
 
     ensurePhysicalPositions(data) {
@@ -45,30 +63,104 @@ export class ViewManager {
         const nodes = data.nodes;
 
         Object.values(nodes).forEach(node => {
-            if (!node.physicalPos) {
+            if (!node.physicalPos || (node.physicalPos.x === 0 && node.physicalPos.y === 0)) {
                 // Copy logicalPos to physicalPos as initial value
-                // Note: Logical pos might be grid-based (col, row), need conversion if so.
-                // For now assuming logicalPos has x, y or we map col/row to x/y.
-                // Guide says: "Logical Mode(구성도)에서의 계산된 렌더링 좌표(x, y)를 그대로 physicalPos의 초기값으로 복사"
-                // Since we don't have the renderer's calculated positions here easily without the Visualizer,
-                // we might need to rely on the Visualizer to update the store, OR we estimate it here.
-                // Let's assume logicalPos has x,y for now or we use a default multiplier.
+                // Logical mode uses 24px grid: x = col * 24, y = row * 24
+                const x = node.logicalPos?.x || (node.logicalPos?.col || 0) * 24;
+                const y = node.logicalPos?.y || (node.logicalPos?.row || 0) * 24;
 
-                const x = node.logicalPos?.x || (node.logicalPos?.col * 150 + 50) || 100;
-                const y = node.logicalPos?.y || (node.logicalPos?.row * 100 + 50) || 100;
+                this.dataStore.updateNode(node.id, {
+                    physicalPos: { x, y }
+                });
+                updated = true;
+            }
+        });
+    }
 
-                node.physicalPos = { x, y };
+    syncFromConfiguration() {
+        const data = this.dataStore.getState();
+        const nodes = data.nodes;
+        let updated = false;
+
+        // Copy logical positions to physical positions for all nodes
+        Object.values(nodes).forEach(node => {
+            if (node.logicalPos) {
+                // Convert logical grid position to pixel coordinates
+                const x = node.logicalPos.x || (node.logicalPos.col || 0) * 24;
+                const y = node.logicalPos.y || (node.logicalPos.row || 0) * 24;
+
+                // Update physical position to match logical position
+                this.dataStore.updateNode(node.id, {
+                    physicalPos: { x, y }
+                });
                 updated = true;
             }
         });
 
         if (updated) {
-            // We modified nodes directly, which is a bit hacky for the store. 
-            // Ideally we should dispatch an action.
-            // But since we are inside the manager, we can call updateNode or just notify.
-            // For batch update, we might want a specific method in DataStore.
-            this.dataStore.notify();
+            // Visual feedback
+            const originalText = this.syncButton.innerHTML;
+            this.syncButton.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> Synced!';
+            this.syncButton.classList.add('bg-green-50', 'text-green-700', 'border-green-300');
+            this.syncButton.classList.remove('bg-white', 'text-slate-600', 'border-slate-200');
+
+            // Refresh icons
+            if (window.lucide) window.lucide.createIcons();
+
+            // Reset after 2 seconds
+            setTimeout(() => {
+                this.syncButton.innerHTML = originalText;
+                this.syncButton.classList.remove('bg-green-50', 'text-green-700', 'border-green-300');
+                this.syncButton.classList.add('bg-white', 'text-slate-600', 'border-slate-200');
+                if (window.lucide) window.lucide.createIcons();
+            }, 2000);
+
+        } else {
+            // Show message if no nodes to sync
+            const originalText = this.syncButton.innerHTML;
+            this.syncButton.innerHTML = '<i data-lucide="alert-circle" class="w-4 h-4"></i> No nodes';
+            this.syncButton.classList.add('bg-yellow-50', 'text-yellow-700', 'border-yellow-300');
+            this.syncButton.classList.remove('bg-white', 'text-slate-600', 'border-slate-200');
+
+            if (window.lucide) window.lucide.createIcons();
+
+            setTimeout(() => {
+                this.syncButton.innerHTML = originalText;
+                this.syncButton.classList.remove('bg-yellow-50', 'text-yellow-700', 'border-yellow-300');
+                this.syncButton.classList.add('bg-white', 'text-slate-600', 'border-slate-200');
+                if (window.lucide) window.lucide.createIcons();
+            }, 2000);
         }
+    }
+
+    async exportPPT() {
+        if (!window.app || !window.app.pptExportManager) {
+            console.error('PPTExportManager not available');
+            return;
+        }
+
+        const data = this.dataStore.getState();
+        const success = window.app.pptExportManager.exportToPPT(data.nodes, data.connections, data.meta.hardwareList);
+
+        if (success) {
+            // Visual feedback
+            const originalText = this.exportButton.innerHTML;
+            this.exportButton.innerHTML = '<i data-lucide="download" class="w-4 h-4"></i> Downloading...';
+
+            if (window.lucide) window.lucide.createIcons();
+
+            setTimeout(() => {
+                this.exportButton.innerHTML = originalText;
+                if (window.lucide) window.lucide.createIcons();
+            }, 2000);
+        } else {
+            alert('Failed to export PPT. Please try again.');
+        }
+    }
+
+    copyCanvas() {
+        // Legacy copy functionality, if needed
+        console.log('Copy canvas not implemented');
     }
 
     updateUI(activeMode) {
@@ -85,95 +177,54 @@ export class ViewManager {
                 btn.classList.add('text-slate-500', 'hover:text-slate-900');
             }
         });
-    }
-}
-=======
-export class ViewManager {
-    constructor(dataStore) {
-        this.dataStore = dataStore;
-        this.buttons = {
-            LOGICAL: document.getElementById('btn-view-logical'),
-            PHYSICAL: document.getElementById('btn-view-physical'),
-            REQUEST: document.getElementById('btn-view-request')
-        };
 
-        this.init();
-    }
-
-    init() {
-        // Bind events
-        Object.entries(this.buttons).forEach(([mode, btn]) => {
-            if (btn) {
-                btn.addEventListener('click', () => this.switchMode(mode));
-            }
-        });
-
-        // Subscribe to store changes to update UI
-        this.dataStore.subscribe((data) => {
-            this.updateUI(data.meta.mode);
-        });
-
-        // Initial UI state
-        this.updateUI(this.dataStore.getState().meta.mode);
-    }
-
-    switchMode(newMode) {
-        const currentData = this.dataStore.getState();
-
-        // Strategy: Initial Placement when entering PHYSICAL mode
-        if (newMode === 'PHYSICAL' || newMode === 'REQUEST') {
-            this.ensurePhysicalPositions(currentData);
-        }
-
-        this.dataStore.setMode(newMode);
-        console.log(`ViewManager: Switched to ${newMode}`);
-    }
-
-    ensurePhysicalPositions(data) {
-        let updated = false;
-        const nodes = data.nodes;
-
-        Object.values(nodes).forEach(node => {
-            if (!node.physicalPos) {
-                // Copy logicalPos to physicalPos as initial value
-                // Note: Logical pos might be grid-based (col, row), need conversion if so.
-                // For now assuming logicalPos has x, y or we map col/row to x/y.
-                // Guide says: "Logical Mode(구성도)에서의 계산된 렌더링 좌표(x, y)를 그대로 physicalPos의 초기값으로 복사"
-                // Since we don't have the renderer's calculated positions here easily without the Visualizer,
-                // we might need to rely on the Visualizer to update the store, OR we estimate it here.
-                // Let's assume logicalPos has x,y for now or we use a default multiplier.
-
-                const x = node.logicalPos?.x || (node.logicalPos?.col * 150 + 50) || 100;
-                const y = node.logicalPos?.y || (node.logicalPos?.row * 100 + 50) || 100;
-
-                node.physicalPos = { x, y };
-                updated = true;
-            }
-        });
-
-        if (updated) {
-            // We modified nodes directly, which is a bit hacky for the store. 
-            // Ideally we should dispatch an action.
-            // But since we are inside the manager, we can call updateNode or just notify.
-            // For batch update, we might want a specific method in DataStore.
-            this.dataStore.notify();
-        }
-    }
-
-    updateUI(activeMode) {
-        Object.entries(this.buttons).forEach(([mode, btn]) => {
-            if (!btn) return;
-
-            if (mode === activeMode) {
-                // Active State
-                btn.classList.remove('text-slate-500', 'hover:text-slate-900');
-                btn.classList.add('bg-white', 'shadow-sm', 'text-slate-900', 'font-medium');
+        // Show/hide copy button based on mode (LOGICAL and PHYSICAL)
+        if (this.copyButton) {
+            if (activeMode === 'LOGICAL' || activeMode === 'PHYSICAL') {
+                this.copyButton.classList.remove('hidden');
             } else {
-                // Inactive State
-                btn.classList.remove('bg-white', 'shadow-sm', 'text-slate-900', 'font-medium');
-                btn.classList.add('text-slate-500', 'hover:text-slate-900');
+                this.copyButton.classList.add('hidden');
             }
-        });
+        }
+
+        // Show/hide sync button based on mode (PHYSICAL only)
+        if (this.syncButton) {
+            if (activeMode === 'PHYSICAL') {
+                this.syncButton.classList.remove('hidden');
+            } else {
+                this.syncButton.classList.add('hidden');
+            }
+        }
+
+        // Show/hide upload button based on mode (PHYSICAL only)
+        if (window.app && window.app.backgroundManager) {
+            if (activeMode === 'PHYSICAL') {
+                window.app.backgroundManager.showUploadButton();
+            } else {
+                window.app.backgroundManager.hideUploadButton();
+            }
+        }
+
+        // Show/hide views based on mode
+        const canvasArea = document.querySelector('#canvas-container')?.parentElement;
+        const hardwareListView = document.getElementById('hardware-list-view');
+
+        if (activeMode === 'HARDWARE_LIST') {
+            // Hide canvas area and show hardware list view
+            if (canvasArea) {
+                canvasArea.classList.add('hidden');
+            }
+            if (hardwareListView) {
+                hardwareListView.classList.remove('hidden');
+            }
+        } else {
+            // Show canvas area and hide hardware list view
+            if (canvasArea) {
+                canvasArea.classList.remove('hidden');
+            }
+            if (hardwareListView) {
+                hardwareListView.classList.add('hidden');
+            }
+        }
     }
 }
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4

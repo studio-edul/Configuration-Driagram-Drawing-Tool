@@ -4,8 +4,16 @@ body {
 }
 
 #canvas-container {
+    /* Flex centering handled in HTML classes */
+    background-color: #e2e8f0; /* slate-200 for contrast outside canvas */
+}
+
+.konvajs-content {
+    background-color: #f8fafc; /* slate-50 */
     background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
     background-size: 24px 24px;
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    border-radius: 4px;
 }
 
 /* Animations */
@@ -39,7 +47,6 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
-<<<<<<< HEAD
 }
 
 /* Hardware List Table Styles */
@@ -140,6 +147,83 @@ body {
 .custom-checkbox:checked {
     background-color: #fee2e2; /* red-50 (pink) - checked color */
     border-color: #f87171; /* red-400 */
-=======
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
+}
+
+/* Cropper.js Custom Styles - Larger, easier to click handlers */
+.cropper-container .cropper-point {
+    cursor: pointer !important;
+}
+
+/* Corner points - Square boxes with blue background and white border */
+.cropper-container .cropper-point.point-se,
+.cropper-container .cropper-point.point-sw,
+.cropper-container .cropper-point.point-nw,
+.cropper-container .cropper-point.point-ne {
+    width: 24px !important;
+    height: 24px !important;
+    background-color: #3b82f6 !important;
+    border: 3px solid #ffffff !important;
+    border-radius: 4px !important;
+    box-shadow: none !important;
+}
+
+/* Edge points - make them thicker bars (면 중앙 조정부) */
+.cropper-container .cropper-point.point-e,
+.cropper-container .cropper-point.point-w {
+    width: 8px !important;
+    height: 40px !important;
+    background-color: #3b82f6 !important;
+    border: 3px solid #ffffff !important;
+    border-radius: 4px !important;
+}
+
+.cropper-container .cropper-point.point-n,
+.cropper-container .cropper-point.point-s {
+    width: 40px !important;
+    height: 8px !important;
+    background-color: #3b82f6 !important;
+    border: 3px solid #ffffff !important;
+    border-radius: 4px !important;
+}
+
+/* Hover state for better feedback */
+.cropper-container .cropper-point:hover {
+    background-color: #2563eb !important;
+    border-color: #ffffff !important;
+    transform: scale(1.1);
+    transition: transform 0.1s ease, background-color 0.1s ease;
+}
+
+/* Active/dragging state */
+.cropper-container .cropper-point.cropper-point-active {
+    background-color: #1d4ed8 !important;
+    border-color: #ffffff !important;
+    transform: scale(1.15);
+}
+
+/* Crop box lines - make them thicker (가이드 라인 굵게) */
+.cropper-container .cropper-crop-box {
+    border-width: 3px !important;
+    border-color: #3b82f6 !important;
+    filter: none !important; /* Always keep guide box colored */
+}
+
+.cropper-container .cropper-line {
+    background-color: #3b82f6 !important;
+    filter: none !important; /* Always keep guide lines colored */
+}
+
+.cropper-container .cropper-line.line-e,
+.cropper-container .cropper-line.line-w {
+    width: 3px !important;
+}
+
+.cropper-container .cropper-line.line-n,
+.cropper-container .cropper-line.line-s {
+    height: 3px !important;
+}
+
+/* Ensure crop guide points remain colored */
+.cropper-container .cropper-point {
+    filter: none !important; /* Always keep guide points colored */
 }

@@ -35,7 +35,6 @@ export class InteractionManager {
                         this.deselectCable();
                     }
 
-                    console.log('Drag started:', target.dataset.type, target.dataset.model);
                     e.dataTransfer.setData('type', target.dataset.type);
                     e.dataTransfer.setData('model', target.dataset.model);
                     e.dataTransfer.setData('color', target.dataset.color);
@@ -83,7 +82,6 @@ export class InteractionManager {
     selectCable(cable) {
         this.selectedCable = cable;
         this.connectionSourceNode = null; // Reset connection source
-        console.log('Cable selected:', cable.type);
     }
 
     updateCableSelectionUI(selectedElement) {
@@ -126,7 +124,6 @@ export class InteractionManager {
         this.selectedCable = null;
         this.connectionSourceNode = null;
         this.updateCableSelectionUI(null);
-        console.log('Cable deselected');
     }
 
     handleNodeClickForConnection(nodeId) {
@@ -138,7 +135,6 @@ export class InteractionManager {
         if (!this.connectionSourceNode) {
             // First node clicked - set as source
             this.connectionSourceNode = nodeId;
-            console.log('Connection source set:', nodeId);
             // Visual feedback for source node
             if (this.visualizer) {
                 this.visualizer.highlightNode(nodeId, 'source', this.selectedCable);
@@ -157,7 +153,6 @@ export class InteractionManager {
             } else {
                 // Same node clicked - deselect source
                 this.connectionSourceNode = null;
-                console.log('Connection source deselected');
                 if (this.visualizer) {
                     this.visualizer.clearNodeSelection();
                 }
@@ -166,17 +161,17 @@ export class InteractionManager {
     }
 
     createConnection(sourceNodeId, targetNodeId, cable) {
-        console.log(`Creating connection: ${sourceNodeId} -> ${targetNodeId} using ${cable.type}`);
+        const mode = this.dataStore.getState().meta.mode;
+        const nodes = mode === 'NETWORK' ? this.dataStore.getState().networkNodes : this.dataStore.getState().nodes;
 
-        const sourceNode = this.dataStore.getState().nodes[sourceNodeId];
-        const targetNode = this.dataStore.getState().nodes[targetNodeId];
+        const sourceNode = nodes[sourceNodeId];
+        const targetNode = nodes[targetNodeId];
 
         if (!sourceNode || !targetNode) {
             console.error('Source or target node not found');
             return;
         }
 
-<<<<<<< HEAD
         // Get Router color for UTP and Wireless cables
         let connectionColor = cable.color;
         if (cable.type === 'UTP' || cable.type === 'Wireless') {
@@ -191,25 +186,18 @@ export class InteractionManager {
             }
         }
 
-=======
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
         const connectionId = `conn-${Date.now()}`;
         const newConnection = {
             id: connectionId,
             source: sourceNodeId,
             target: targetNodeId,
             type: cable.type,
-<<<<<<< HEAD
             color: connectionColor,
-=======
-            color: cable.color,
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
             category: cable.category,
             model: cable.model
         };
 
         this.dataStore.addConnection(newConnection);
-        console.log('Connection created:', newConnection);
     }
 
     setupCanvasDropZone() {
@@ -227,7 +215,6 @@ export class InteractionManager {
             const color = e.dataTransfer.getData('color');
             const category = e.dataTransfer.getData('category');
 
-            console.log('Drop event:', type, model, color, category);
 
             if (type) {
                 this.handleDrop(e, type, model, color, category);
@@ -239,7 +226,6 @@ export class InteractionManager {
         try {
             // Don't create nodes for cables - they are used for connections only
             if (category === 'Cable') {
-                console.log('Cables cannot be dropped as nodes. Select cable and click two nodes to connect.');
                 return;
             }
 
@@ -295,15 +281,16 @@ export class InteractionManager {
                 category: category || 'Device',
                 // Initialize positions based on mode
                 logicalPos: mode === 'LOGICAL' ? this.pixelsToLogical(x, y) : { col: 0, row: 0 },
-                physicalPos: mode === 'PHYSICAL' ? { x, y } : null
+                physicalPos: (mode === 'PHYSICAL' || mode === 'NETWORK') ? { x, y } : null
             };
 
             this.dataStore.addNode(newNode);
-            console.log(`InteractionManager: Added ${type} (${model}) at`, x, y);
         } catch (error) {
             console.error('InteractionManager Drop Error:', error);
         }
     }
+
+
 
     pixelsToLogical(x, y) {
         // Convert pixel position to grid coordinates (using 24px grid)

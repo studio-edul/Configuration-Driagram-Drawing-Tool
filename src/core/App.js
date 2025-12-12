@@ -7,10 +7,8 @@ import { PPTExportManager } from '../managers/PPTExportManager.js';
 import { InteractionManager } from '../managers/InteractionManager.js';
 import { PropertyManager } from '../managers/PropertyManager.js';
 import { HardwareRegistryManager } from '../managers/HardwareRegistryManager.js';
-<<<<<<< HEAD
 import { HardwareListManager } from '../managers/HardwareListManager.js';
-=======
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
+import { LegendManager } from '../managers/LegendManager.js';
 import { Visualizer } from './Visualizer.js';
 import { DataStore } from './DataStore.js';
 
@@ -27,10 +25,8 @@ export class App {
         this.propertyManager = new PropertyManager(this.dataStore);
         this.hardwareRegistryManager = new HardwareRegistryManager(this.dataStore);
         this.interactionManager = new InteractionManager(this.dataStore, this.visualizer);
-<<<<<<< HEAD
         this.hardwareListManager = new HardwareListManager(this.dataStore);
-=======
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
+        this.legendManager = new LegendManager(this.dataStore);
 
         // Bind Selection - This will be wrapped by InteractionManager for cable connection mode
         // Normal node selection goes to PropertyManager
@@ -57,16 +53,7 @@ export class App {
         // We need to add this logic to Visualizer or here.
         // Let's add a simple stage click listener in Visualizer for deselect.
 
-<<<<<<< HEAD
         // Make hardwareListManager accessible globally for checkbox handler
         window.app = this;
-
-=======
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
-        this.init();
-    }
-
-    init() {
-        console.log("App Initialized");
     }
 }

@@ -5,18 +5,17 @@ export const DEFAULT_HARDWARE = [
     { type: 'Mobile', model: '', color: '#ec4899', category: 'Device' },
     { type: 'Display', model: '', color: '#f59e0b', category: 'Device' },
     { type: 'LED', model: '', color: '#10b981', category: 'Device' },
-<<<<<<< HEAD
     { type: 'Projector', model: '', color: '#6366f1', category: 'Device' },
-=======
-    { type: 'Projector', model: '', color: '#ef4444', category: 'Device' },
->>>>>>> 69958a1430fa59ef7d54047e968a915e3f18feb4
     { type: 'Touch Display', model: '', color: '#06b6d4', category: 'Device' },
+
+    // Infra
+    { category: 'Infra', type: '220V', model: '', color: '#ef4444' },
+    { category: 'Infra', type: 'Internet', model: '', color: '#1e40af' },
 
     { type: 'UTP', model: 'UTP', color: '#3b82f6', category: 'Cable' },
     { type: 'Wireless', model: 'Wireless', color: '#3b82f6', category: 'Cable', dash: true },
     { type: 'HDMI', model: 'HDMI', color: '#f59e0b', category: 'Cable' },
     { type: 'DP', model: 'DP', color: '#6366f1', category: 'Cable' },
     { type: 'AUX', model: 'AUX', color: '#14b8a6', category: 'Cable' },
-    { type: 'USB', model: 'USB', color: '#84cc16', category: 'Cable' },
-    { type: 'Speaker Cable', model: 'Speaker Cable', color: '#f97316', category: 'Cable' }
+    { type: 'USB', model: 'USB', color: '#84cc16', category: 'Cable' }
 ];
