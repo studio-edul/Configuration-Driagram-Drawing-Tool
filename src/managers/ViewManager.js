@@ -2,8 +2,8 @@ export class ViewManager {
     constructor(dataStore) {
         this.dataStore = dataStore;
         this.buttons = {
-            LOGICAL: document.getElementById('btn-view-logical'),
-            PHYSICAL: document.getElementById('btn-view-physical'),
+            CONFIGURATION: document.getElementById('btn-view-logical'),
+            INSTALLATION: document.getElementById('btn-view-physical'),
             NETWORK: document.getElementById('btn-view-network'),
             HARDWARE_LIST: document.getElementById('btn-hardware-list')
         };
@@ -51,8 +51,8 @@ export class ViewManager {
     switchMode(mode) {
         this.dataStore.setMode(mode);
 
-        // If switching to PHYSICAL mode, ensure positions are initialized
-        if (mode === 'PHYSICAL') {
+        // If switching to INSTALLATION mode, ensure positions are initialized
+        if (mode === 'INSTALLATION') {
             const data = this.dataStore.getState();
             this.ensurePhysicalPositions(data);
         }
@@ -178,27 +178,27 @@ export class ViewManager {
             }
         });
 
-        // Show/hide copy button based on mode (LOGICAL and PHYSICAL)
+        // Show/hide copy button based on mode (CONFIGURATION and INSTALLATION)
         if (this.copyButton) {
-            if (activeMode === 'LOGICAL' || activeMode === 'PHYSICAL') {
+            if (activeMode === 'CONFIGURATION' || activeMode === 'INSTALLATION') {
                 this.copyButton.classList.remove('hidden');
             } else {
                 this.copyButton.classList.add('hidden');
             }
         }
 
-        // Show/hide sync button based on mode (PHYSICAL only)
+        // Show/hide sync button based on mode (INSTALLATION only)
         if (this.syncButton) {
-            if (activeMode === 'PHYSICAL') {
+            if (activeMode === 'INSTALLATION') {
                 this.syncButton.classList.remove('hidden');
             } else {
                 this.syncButton.classList.add('hidden');
             }
         }
 
-        // Show/hide upload button based on mode (PHYSICAL only)
+        // Show/hide upload button based on mode (INSTALLATION only)
         if (window.app && window.app.backgroundManager) {
-            if (activeMode === 'PHYSICAL') {
+            if (activeMode === 'INSTALLATION') {
                 window.app.backgroundManager.showUploadButton();
             } else {
                 window.app.backgroundManager.hideUploadButton();

@@ -91,17 +91,32 @@ export class HardwareRegistryManager {
 
         // Exclude red colors
         const redColors = ['#ef4444', '#f87171', '#dc2626', '#fee2e2', '#fca5a5', '#991b1b', '#be123c'];
-        const availableColors = AVAILABLE_COLORS.filter(color => !redColors.includes(color.toLowerCase()));
+        const grayColors = ['#64748b', '#94a3b8']; // Gray colors (slate-500, slate-400)
+        
+        // Separate non-gray and gray colors
+        const nonGrayColors = AVAILABLE_COLORS.filter(color => 
+            !redColors.includes(color.toLowerCase()) && !grayColors.includes(color)
+        );
+        const availableGrayColors = AVAILABLE_COLORS.filter(color => 
+            !redColors.includes(color.toLowerCase()) && grayColors.includes(color)
+        );
 
-        // Find first unused color from available colors (excluding red)
-        for (const color of availableColors) {
+        // First, try to find unused non-gray color
+        for (const color of nonGrayColors) {
+            if (!usedColors.has(color)) {
+                return color;
+            }
+        }
+
+        // If all non-gray colors are used, try gray colors
+        for (const color of availableGrayColors) {
             if (!usedColors.has(color)) {
                 return color;
             }
         }
 
         // If all colors are used, return first available non-red color
-        return availableColors[0] || AVAILABLE_COLORS[0];
+        return nonGrayColors[0] || AVAILABLE_COLORS[0];
     }
 
     openModal(item = null) {
@@ -136,7 +151,7 @@ export class HardwareRegistryManager {
             id: this.inputEditId.value,
             category: this.inputCategory.value,
             type: this.inputType.value || 'Generic',
-            model: this.inputModel.value || 'Generic',
+            model: this.inputModel.value || '', // Empty string instead of 'Generic'
             color: this.inputColor.value
         };
         this.saveHardware(item);

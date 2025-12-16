@@ -236,7 +236,7 @@ export class InteractionManager {
             if (this.visualizer && this.visualizer.stage) {
                 // Use Konva's method to get pointer position relative to stage
                 this.visualizer.stage.setPointersPositions(e);
-                const pos = this.visualizer.stage.getPointerPosition();
+                const pos = this.visualizer.stage.getRelativePointerPosition();
                 if (pos) {
                     x = pos.x;
                     y = pos.y;
@@ -262,8 +262,8 @@ export class InteractionManager {
             const id = `${type}-${Date.now()}`; // Simple unique ID
             const mode = this.dataStore.getState().meta.mode;
 
-            // Snap to grid in LOGICAL mode
-            if (mode === 'LOGICAL' && this.visualizer) {
+            // Snap to grid in CONFIGURATION mode
+            if (mode === 'CONFIGURATION' && this.visualizer) {
                 x = this.visualizer.snapToGridX(x);
                 y = this.visualizer.snapToGridY(y);
             }
@@ -280,8 +280,8 @@ export class InteractionManager {
                 color: safeColor,
                 category: category || 'Device',
                 // Initialize positions based on mode
-                logicalPos: mode === 'LOGICAL' ? this.pixelsToLogical(x, y) : { col: 0, row: 0 },
-                physicalPos: (mode === 'PHYSICAL' || mode === 'NETWORK') ? { x, y } : null
+                logicalPos: mode === 'CONFIGURATION' ? this.pixelsToLogical(x, y) : { col: 0, row: 0 },
+                physicalPos: (mode === 'INSTALLATION' || mode === 'NETWORK') ? { x, y } : null
             };
 
             this.dataStore.addNode(newNode);

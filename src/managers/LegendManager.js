@@ -12,7 +12,7 @@ export class LegendManager {
         // Subscribe to data changes
         this.dataStore.subscribe((data) => {
             const mode = data.meta.mode;
-            if (mode === 'LOGICAL' || mode === 'PHYSICAL') {
+            if (mode === 'CONFIGURATION' || mode === 'INSTALLATION') {
                 this.updateLegend(data);
                 this.showLegend();
             } else {
@@ -22,7 +22,7 @@ export class LegendManager {
 
         // Initial update
         const currentData = this.dataStore.getState();
-        if (currentData.meta.mode === 'LOGICAL' || currentData.meta.mode === 'PHYSICAL') {
+        if (currentData.meta.mode === 'CONFIGURATION' || currentData.meta.mode === 'INSTALLATION') {
             this.updateLegend(currentData);
             this.showLegend();
         }

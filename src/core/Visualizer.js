@@ -25,7 +25,10 @@ export class Visualizer {
         // Click debouncing (global, not per-node)
         this.lastClickTime = 0;
         this.lastClickNodeId = null;
+        this.lastClickNodeId = null;
         this.isProcessingClick = false;
+
+        this.tempBendOverrides = {}; // Temporary bend X storage during drag
 
         this.init();
     }
@@ -99,15 +102,38 @@ export class Visualizer {
         const container = document.getElementById('canvas-container');
         if (!container) return;
 
-        // Calculate 92% width and 16:9 height for better spacing
-        this.width = container.offsetWidth * 0.92;
-        this.height = this.width * (9 / 16);
+        // VIRTUAL DIMENSIONS (72 DPI for 33.876cm x 19.05cm)
+        // 33.876cm / 2.54 * 72 = 960.26
+        // 19.05cm / 2.54 * 72 = 540
+        const VIRTUAL_WIDTH = 960.26;
+        const VIRTUAL_HEIGHT = 540;
+
+        // Container is the viewport (the actual canvas element size in DOM)
+        // Get actual container dimensions
+        const availableWidth = container.offsetWidth * 0.92;
+        const availableHeight = container.offsetHeight * 0.92;
+
+        // Calculate scale factors for both dimensions
+        const scaleX = availableWidth / VIRTUAL_WIDTH;
+        const scaleY = availableHeight / VIRTUAL_HEIGHT;
+
+        // Use the smaller scale to ensure content fits within container (fit-to-container)
+        const scale = Math.min(scaleX, scaleY);
+
+        // Calculate actual container dimensions based on scale
+        const containerWidth = VIRTUAL_WIDTH * scale;
+        const containerHeight = VIRTUAL_HEIGHT * scale;
+
+        // Update class properties for reference (if needed outside) but the proper Virtual Size is constant
+        this.width = VIRTUAL_WIDTH;
+        this.height = VIRTUAL_HEIGHT;
 
         if (!this.stage) {
             this.stage = new Konva.Stage({
                 container: 'canvas-container',
-                width: this.width,
-                height: this.height,
+                width: containerWidth,
+                height: containerHeight,
+                scale: { x: scale, y: scale } // Apply Global Scale
             });
             this.layer = new Konva.Layer();
             this.stage.add(this.layer);
@@ -117,7 +143,8 @@ export class Visualizer {
                 const mode = this.dataStore.getState().meta.mode;
                 if (e.target === this.stage || e.target === this.layer) {
                     if (mode === 'REQUEST') {
-                        const pos = this.stage.getPointerPosition();
+                        // Use relative pointer position for correct virtual coordinates
+                        const pos = this.stage.getRelativePointerPosition();
                         if (window.app && window.app.requestManager) {
                             window.app.requestManager.addRequest(pos.x, pos.y);
                         }
@@ -139,8 +166,11 @@ export class Visualizer {
                 }
             });
         } else {
-            this.stage.width(this.width);
-            this.stage.height(this.height);
+            // Update stage dimensions (viewport)
+            this.stage.width(containerWidth);
+            this.stage.height(containerHeight);
+            // Update scale
+            this.stage.scale({ x: scale, y: scale });
         }
 
         this.render();
@@ -148,9 +178,9 @@ export class Visualizer {
 
     renderTitle(mode) {
         let titleText = '';
-        if (mode === 'LOGICAL') {
+        if (mode === 'CONFIGURATION') {
             titleText = 'System Configuration';
-        } else if (mode === 'PHYSICAL') {
+        } else if (mode === 'INSTALLATION') {
             titleText = 'Cable Guide';
         } else if (mode === 'NETWORK') {
             titleText = 'Electricity & Network';
@@ -161,10 +191,10 @@ export class Visualizer {
                 x: this.width * 0.04,
                 y: this.width * 0.04, // Equal margins based on width
                 text: titleText,
-                fontSize: 60, // Approx 45pt
+                fontSize: 36, // 36pt (PPT 기준과 동일)
                 fontStyle: 'bold',
                 fill: '#000000',
-                fontFamily: 'Noto Sans KR'
+                fontFamily: 'Samsung Sharp Sans'
             });
             this.layer.add(textNode);
         }
@@ -177,11 +207,12 @@ export class Visualizer {
         this.stage.on('mousedown', (e) => {
             // Only enable box selection if clicking on stage (not on a node)
             const mode = this.dataStore.getState().meta.mode;
-            if (e.target === this.stage && (mode === 'PHYSICAL' || mode === 'LOGICAL' || mode === 'NETWORK')) {
+            if (e.target === this.stage && (mode === 'INSTALLATION' || mode === 'CONFIGURATION' || mode === 'NETWORK')) {
                 // Don't start box selection if modifier keys are pressed (for multi-select)
                 if (!this.modifierKeys.shift && !this.modifierKeys.ctrl) {
                     isSelecting = true;
-                    const pos = this.stage.getPointerPosition();
+                    // Use relative pointer position for virtual coordinates
+                    const pos = this.stage.getRelativePointerPosition();
                     startPos = { x: pos.x, y: pos.y };
                     this.boxStartPos = startPos;
 
@@ -205,7 +236,8 @@ export class Visualizer {
 
         this.stage.on('mousemove', (e) => {
             if (isSelecting && this.boxSelectionRect && startPos) {
-                const pos = this.stage.getPointerPosition();
+                // Use relative pointer position
+                const pos = this.stage.getRelativePointerPosition();
                 const width = pos.x - startPos.x;
                 const height = pos.y - startPos.y;
 
@@ -222,7 +254,8 @@ export class Visualizer {
 
         this.stage.on('mouseup', (e) => {
             if (isSelecting && this.boxSelectionRect && startPos) {
-                const pos = this.stage.getPointerPosition();
+                // Use relative pointer position
+                const pos = this.stage.getRelativePointerPosition();
                 const box = {
                     x: Math.min(startPos.x, pos.x),
                     y: Math.min(startPos.y, pos.y),
@@ -249,7 +282,7 @@ export class Visualizer {
         const selectedNodes = new Set();
 
         const mode = this.dataStore.getState().meta.mode;
-        const isSmallNode = mode === 'PHYSICAL' || mode === 'NETWORK';
+        const isSmallNode = mode === 'INSTALLATION' || mode === 'NETWORK';
 
         Object.values(this.nodeGroups).forEach(group => {
             const nodeBox = {
@@ -311,7 +344,7 @@ export class Visualizer {
         this.renderTitle(mode);
 
         // Render Background Image
-        if (data.meta.floorPlanImage && (mode === 'PHYSICAL' || mode === 'REQUEST' || mode === 'NETWORK')) {
+        if (data.meta.floorPlanImage && (mode === 'INSTALLATION' || mode === 'REQUEST' || mode === 'NETWORK')) {
             if (!this.bgImageNode) {
                 this.bgImageNode = new Konva.Image({
                     image: this.bgImageObj,
@@ -388,7 +421,7 @@ export class Visualizer {
     }
 
     renderLegend(data, mode) {
-        if (mode !== 'LOGICAL' && mode !== 'PHYSICAL' && mode !== 'NETWORK') return;
+        if (mode !== 'CONFIGURATION' && mode !== 'INSTALLATION' && mode !== 'NETWORK') return;
 
         const targetNodes = mode === 'NETWORK' ? data.networkNodes : data.nodes;
         const targetConnections = mode === 'NETWORK' ? data.networkConnections : data.connections;
@@ -407,12 +440,11 @@ export class Visualizer {
         });
 
         const itemCount = Object.keys(components).length + Object.keys(cables).length;
-        // Height = Header(30) + TopMargin(30) + Items(n*30) + BottomMargin(approx 30)
-        // StartY=60. LastItemY = 60 + (n-1)*30. Height = LastItemY + 12 + 30 = 30n + 72.
-        // Using 75 for slight extra breathing room
-        const legendHeight = (itemCount * 30) + 75;
+        // Height = Header(21) + TopMargin(29.4) + Items(n*21) + BottomMargin
+        // Using 53 for slight extra breathing room (approx 0.7x of 75)
+        const legendHeight = (itemCount * 21) + 53;
 
-        const legendWidth = 200;
+        const legendWidth = 160; // Increased from 140px
         const legendX = this.width - legendWidth - (this.width * 0.04); // Right aligned with padding
         const legendY = (this.height - legendHeight) / 2; // Vertically centered
 
@@ -428,63 +460,79 @@ export class Visualizer {
             fill: 'white',
             stroke: 'black',
             strokeWidth: 1,
-            cornerRadius: 10
+            cornerRadius: 0
         });
         group.add(bg);
 
-        // Header
+        // Header (30px height)
+        const headerHeight = 30;
         const headerBg = new Konva.Rect({
             width: legendWidth,
-            height: 30,
+            height: headerHeight,
             fill: 'black',
-            cornerRadius: [10, 10, 0, 0]
+            cornerRadius: 0
         });
         group.add(headerBg);
 
         const headerText = new Konva.Text({
-            x: 0, y: 8,
+            x: 0,
+            y: 0, // Start at top of header
             width: legendWidth,
+            height: headerHeight, // Set height to match container
             text: 'Technical List',
-            fontSize: 14,
+            fontSize: 12, // 12pt
             fontStyle: 'bold',
             fill: 'white',
-            align: 'center'
+            align: 'center',
+            verticalAlign: 'middle', // Center vertically within the height
+            fontFamily: 'Samsung Sharp Sans'
         });
         group.add(headerText);
 
-        let currentY = 60; // Increased top margin
+        let currentY = 42; // 0.7x of 60
 
         // Render Items
         const renderItem = (label, color, isLine = false) => {
+            const itemHeight = 21;
+            
             if (isLine) {
+                // 텍스트 중앙 y: currentY + itemHeight / 2 = currentY + 10.5
+                const lineY = currentY + itemHeight / 2; // currentY + 10.5
                 const line = new Konva.Line({
-                    points: [20, currentY + 7, 50, currentY + 7], // Increased left margin and length
+                    points: [14, lineY, 35, lineY], // 텍스트 중앙에 맞춤
                     stroke: color,
-                    strokeWidth: 2,
-                    dash: label.includes('Wireless') ? [5, 5] : []
+                    strokeWidth: 1.4, // Scaled 0.7x
+                    dash: label.includes('Wireless') ? [3.5, 3.5] : []
                 });
                 group.add(line);
             } else {
                 // Draw a small square for component
+                // 텍스트 중앙 y: currentY + itemHeight / 2 = currentY + 10.5
+                // 사각형 중앙 y: currentY + y + height / 2 = currentY + y + 6
+                // 텍스트 중앙과 맞추려면: y + 6 = 10.5, 따라서 y = 4.5
                 const rect = new Konva.Rect({
-                    x: 29, // Centered with line (20-50 center is 35, width 12, so 35-6=29)
-                    y: currentY + 1, // Center with text
-                    width: 12,
-                    height: 12,
+                    x: 20.3, // Scaled 29 -> ~20.3
+                    y: currentY + 4.5, // Aligned to center with text (text center: currentY + 10.5, rect center: currentY + 4.5 + 6)
+                    width: 12, // Increased from 10
+                    height: 12, // Increased from 10
                     fill: color
                 });
                 group.add(rect);
             }
-
             const text = new Konva.Text({
-                x: 60, // Increased left margin for text
-                y: currentY,
+                x: 42, // 60 * 0.7
+                y: currentY, // Start at top of item row
+                width: legendWidth - 42,
+                height: itemHeight, // Set height to match item row
                 text: label,
-                fontSize: 12,
-                fill: 'black'
+                fontSize: 12, // 12pt
+                fill: 'black',
+                align: 'left',
+                verticalAlign: 'middle', // Center vertically within the height
+                fontFamily: 'Samsung Sharp Sans'
             });
             group.add(text);
-            currentY += 30; // Increased line height spacing
+            currentY += 21; // 30 * 0.7
         };
 
         // Draw Components first
@@ -506,7 +554,7 @@ export class Visualizer {
     }
 
     renderRequest(req) {
-        const size = 30;
+        const size = 21; // 30 * 0.7
         const group = new Konva.Group({
             x: req.x,
             y: req.y,
@@ -517,16 +565,17 @@ export class Visualizer {
             width: size, height: size,
             fill: req.type === 'POWER' ? '#fca5a5' : '#93c5fd', // red-300 : blue-300
             stroke: req.type === 'POWER' ? '#ef4444' : '#3b82f6', // red-500 : blue-500
-            strokeWidth: 2,
+            strokeWidth: 1.4,
             offset: { x: size / 2, y: size / 2 }
         });
 
         const text = new Konva.Text({
             text: req.label,
-            fontSize: 14,
+            fontSize: 15, // 15pt (PPT 기준과 동일)
             fontStyle: 'bold',
             fill: 'white',
-            offset: { x: 4, y: 6 } // Approximate center
+            offset: { x: 3, y: 4 }, // Approximate center scaled
+            fontFamily: 'Samsung Sharp Sans'
         });
 
         group.add(rect);
@@ -538,7 +587,7 @@ export class Visualizer {
         let x, y;
         let draggable = false;
 
-        if (mode === 'LOGICAL') {
+        if (mode === 'CONFIGURATION') {
             // Grid mapping for logical (using 24px grid)
             x = (node.logicalPos?.col || 0) * 24;
             y = (node.logicalPos?.row || 0) * 24;
@@ -547,7 +596,7 @@ export class Visualizer {
             // Physical / Request
             x = node.physicalPos?.x || 0;
             y = node.physicalPos?.y || 0;
-            draggable = (mode === 'PHYSICAL' || mode === 'NETWORK');
+            draggable = (mode === 'INSTALLATION' || mode === 'NETWORK');
         }
 
         const group = new Konva.Group({
@@ -560,72 +609,149 @@ export class Visualizer {
         // Dynamic Color
         const nodeColor = node.color || '#94a3b8'; // Default slate-400
 
-        if (mode === 'PHYSICAL' || mode === 'NETWORK') {
-            // Physical Mode: 24x24 Rounded Square
+        if (mode === 'INSTALLATION' || mode === 'NETWORK') {
+            // Physical Mode: Scaled 0.7x (approx 16.8)
             const rect = new Konva.Rect({
-                width: 24,
-                height: 24,
+                width: 16.8,
+                height: 16.8,
                 fill: nodeColor,
                 stroke: '#ffffff',
                 strokeWidth: 1,
-                cornerRadius: 6,
+                cornerRadius: 4.2, // Scaled 6 -> 4.2
                 shadowColor: 'black',
-                shadowBlur: 3,
+                shadowBlur: 2,
                 shadowOpacity: 0.2,
-                shadowOffset: { x: 1, y: 1 }
+                shadowOffset: { x: 0.7, y: 0.7 }
             });
             group.add(rect);
         } else {
-            // Logical Mode: 100x60 Card with Labels
+            // Logical Mode: 70x42 Card with Labels
             const rect = new Konva.Rect({
-                width: 100,
-                height: 60,
-                fill: 'white',
-                stroke: nodeColor,
-                strokeWidth: 2,
-                cornerRadius: 8,
-                shadowColor: 'black',
-                shadowBlur: 5,
-                shadowOpacity: 0.1,
-                shadowOffset: { x: 2, y: 2 }
-            });
-
-            // Header Background (Colored)
-            const header = new Konva.Rect({
-                width: 100,
-                height: 20,
+                width: 70, // 100 * 0.7
+                height: 42, // 60 * 0.7
                 fill: nodeColor,
-                cornerRadius: [8, 8, 0, 0]
+                stroke: '#ffffff',
+                strokeWidth: 1.4,
+                cornerRadius: 5.6, // 8 * 0.7
+                shadowColor: 'black',
+                shadowBlur: 3.5,
+                shadowOpacity: 0.1,
+                shadowOffset: { x: 1.4, y: 1.4 }
             });
 
-            // Type Label - centered if no model, otherwise positioned above
+            // Type Label - centered in box with auto-wrapping and height adjustment
             const hasModel = node.model && node.model.trim() !== '';
-            const typeText = new Konva.Text({
-                text: node.type || node.id.replace(/-\d+$/, ''), // Remove trailing numbers from id if type not available
-                fontSize: 12,
-                fontStyle: 'bold',
-                y: hasModel ? 25 : 40, // Above model if exists, centered at box center (40px) if not
-                width: 100,
-                align: 'center',
-                fill: '#334155',
-                offsetY: hasModel ? 0 : 6 // Adjust to center text vertically when no model (half of font size)
-            });
-
-            group.add(rect);
-            group.add(header);
-            group.add(typeText);
-
-            // Model Label - only show if model exists
+            let boxHeight = 42;
+            let boxWidth = 70;
+            const fontSize = 15;
+            const lineSpacing = 3; // 텍스트 간 간격
+            const padding = 5; // 좌우 padding (5px each side)
+            const minBoxWidth = 70; // Minimum block width
+            
+            // Helper function to measure text width without wrapping
+            const measureTextWidth = (text) => {
+                const tempText = new Konva.Text({
+                    text: text,
+                    fontSize: fontSize,
+                    fontStyle: 'bold',
+                    fontFamily: 'Samsung Sharp Sans'
+                });
+                return tempText.width();
+            };
+            
+            // Process type text: if no spaces, expand block width to fit
+            const typeTextStr = node.type || node.id.replace(/-\d+$/, '');
+            const hasSpacesInType = typeTextStr.includes(' ');
+            let typeTextWidth = measureTextWidth(typeTextStr);
+            let finalBoxWidth = boxWidth;
+            
+            if (!hasSpacesInType && typeTextWidth + (padding * 2) > boxWidth) {
+                // Single word without spaces: expand block width
+                finalBoxWidth = Math.max(minBoxWidth, typeTextWidth + (padding * 2));
+            }
+            
+            // Process model text if exists
+            let modelTextStr = '';
+            let hasSpacesInModel = false;
+            let modelTextWidth = 0;
             if (hasModel) {
-                const modelText = new Konva.Text({
-                    text: node.model,
-                    fontSize: 10,
-                    y: 40,
-                    width: 100,
+                modelTextStr = node.model;
+                hasSpacesInModel = modelTextStr.includes(' ');
+                modelTextWidth = measureTextWidth(modelTextStr);
+                
+                // If model is wider, expand block width (but only if no spaces)
+                if (!hasSpacesInModel && modelTextWidth + (padding * 2) > finalBoxWidth) {
+                    finalBoxWidth = Math.max(finalBoxWidth, modelTextWidth + (padding * 2));
+                }
+            }
+            
+            // Update rect width if expanded
+            if (finalBoxWidth !== boxWidth) {
+                rect.width(finalBoxWidth);
+                boxWidth = finalBoxWidth;
+            }
+            
+            const textWidth = boxWidth - (padding * 2); // Available width for text
+            
+            // Create type text with conditional wrapping
+            const typeText = new Konva.Text({
+                text: typeTextStr,
+                fontSize: fontSize, // 15pt (PPT 기준과 동일)
+                fontStyle: 'bold',
+                x: padding, // Add left padding
+                y: 0, // Start at top of box
+                width: textWidth, // Reduced width for padding
+                align: 'center',
+                verticalAlign: 'top', // Start from top, we'll adjust position after measuring
+                fill: '#ffffff',
+                fontFamily: 'Samsung Sharp Sans',
+                wrap: hasSpacesInType ? 'word' : 'none' // Only wrap if there are spaces
+            });
+            
+            group.add(rect);
+            group.add(typeText);
+            
+            // Measure type text height after adding to group
+            const typeTextHeight = typeText.height();
+            
+            let modelText = null;
+            if (hasModel) {
+                // Create model text with conditional wrapping
+                modelText = new Konva.Text({
+                    text: modelTextStr,
+                    fontSize: fontSize, // 15pt (PPT 기준과 동일)
+                    x: padding, // Add left padding
+                    y: typeTextHeight + lineSpacing, // Position below type text
+                    width: textWidth, // Reduced width for padding
                     align: 'center',
-                    fill: '#94a3b8'
+                    verticalAlign: 'top', // Start from top
+                    fill: '#ffffff',
+                    fontFamily: 'Samsung Sharp Sans',
+                    wrap: hasSpacesInModel ? 'word' : 'none' // Only wrap if there are spaces
                 });
                 group.add(modelText);
+                
+                // Measure model text height
+                const modelTextHeight = modelText.height();
+                
+                // Adjust box height to fit both texts with padding
+                boxHeight = Math.max(42, typeTextHeight + modelTextHeight + lineSpacing + 6); // 6px padding
+            } else {
+                // Adjust box height to fit type text with padding
+                boxHeight = Math.max(42, typeTextHeight + 6); // 6px padding
+            }
+            
+            // Update rect height
+            rect.height(boxHeight);
+            
+            // Center texts vertically in the adjusted box
+            const totalTextHeight = hasModel ? (typeTextHeight + lineSpacing + modelText.height()) : typeTextHeight;
+            const startY = (boxHeight - totalTextHeight) / 2;
+            typeText.y(startY);
+            typeText.verticalAlign('top');
+            if (hasModel) {
+                modelText.y(startY + typeTextHeight + lineSpacing);
+                modelText.verticalAlign('top');
             }
         }
 
@@ -705,7 +831,7 @@ export class Visualizer {
         });
 
         // Drag events - handle both single and multi-node drag
-        if (mode === 'PHYSICAL' || mode === 'LOGICAL' || mode === 'NETWORK') {
+        if (mode === 'INSTALLATION' || mode === 'CONFIGURATION' || mode === 'NETWORK') {
             group.on('dragstart', () => {
                 // If dragging a non-selected node, make it the only selected node
                 if (!this.selectedNodeIds.has(node.id)) {
@@ -724,6 +850,39 @@ export class Visualizer {
                             const selectedGroup = this.nodeGroups[selectedId];
                             selectedGroup.setAttr('_startX', selectedGroup.x());
                             selectedGroup.setAttr('_startY', selectedGroup.y());
+                        }
+                    });
+
+                    // Store initial bend positions for "internal" connections
+                    // Internal means both source and target are selected
+                    const data = this.dataStore.getState();
+                    const targetConnections = mode === 'NETWORK' ? data.networkConnections : data.connections;
+
+                    this.tempBendOverrides = {}; // Clear previous Overrides
+
+                    Object.values(targetConnections).forEach(conn => {
+                        if (this.selectedNodeIds.has(conn.source) && this.selectedNodeIds.has(conn.target)) {
+                            const bendX = this.getConnectionBendX(conn, mode);
+                            // If bendX is set (custom), define start point. If not set, we can check if it's currently rendered and calculate it,
+                            // or ignore it (default routing will handle automatic relative movement usually, but if we want to freeze "auto" layout during drag, we might need it).
+                            // For this task, we focus on preserving CUSTOM bends or "fixed" bends.
+
+                            // If it's a number, it's a fixed bend or previously custom bend
+                            if (typeof bendX === 'number') {
+                                this.connectionLines[conn.id]?.setAttr('_startBendX', bendX);
+                                this.tempBendOverrides[conn.id] = bendX;
+                            } else {
+                                // If undefined, try to capture current actual bend from line points
+                                const line = this.connectionLines[conn.id];
+                                if (line) {
+                                    const info = this.getPrimaryVerticalSegmentInfo(line.points());
+                                    if (info) {
+                                        // Treat this as the start point for relative drag
+                                        line.setAttr('_startBendX', info.x);
+                                        this.tempBendOverrides[conn.id] = info.x;
+                                    }
+                                }
+                            }
                         }
                     });
                 }
@@ -754,6 +913,21 @@ export class Visualizer {
                             selectedGroup.position({ x: newX, y: newY });
                         }
                     });
+
+                    // Update internal connections bend points relative to drag
+                    const data = this.dataStore.getState();
+                    const targetConnections = mode === 'NETWORK' ? data.networkConnections : data.connections;
+
+                    Object.values(targetConnections).forEach(conn => {
+                        // Check if we have a start value for this connection (implies it's internal and we are tracking it)
+                        const line = this.connectionLines[conn.id];
+                        if (line && line.getAttr('_startBendX') !== undefined) {
+                            const startBendX = line.getAttr('_startBendX');
+                            const newBendX = startBendX + deltaX; // Move same amount as nodes
+                            this.tempBendOverrides[conn.id] = newBendX;
+                        }
+                    });
+
                     this.layer.batchDraw();
                 }
 
@@ -786,7 +960,7 @@ export class Visualizer {
 
                             const nodeData = this.dataStore.getState().nodes[selectedId];
                             if (nodeData) {
-                                if (mode === 'LOGICAL') {
+                                if (mode === 'CONFIGURATION') {
                                     // Snap to nearest grid position
                                     const snappedX = this.snapToGridX(finalX);
                                     const snappedY = this.snapToGridY(finalY);
@@ -813,8 +987,21 @@ export class Visualizer {
                             }
                         }
                     });
+
+                    // Commit temp bend overrides to store
+                    Object.entries(this.tempBendOverrides).forEach(([connId, bendX]) => {
+                        // Apply snap to the final bend position
+                        const snappedBendX = this.snapToHalfGridX(bendX);
+                        this.setConnectionBendX(connId, mode, snappedBendX);
+
+                        // Clear temporary attribute
+                        const line = this.connectionLines[connId];
+                        if (line) line.setAttr('_startBendX', undefined);
+                    });
+                    this.tempBendOverrides = {};
+
                     // Redraw layer after snapping all nodes
-                    if (mode === 'LOGICAL') {
+                    if (mode === 'CONFIGURATION') {
                         this.layer.batchDraw();
                     }
                 } else {
@@ -828,7 +1015,7 @@ export class Visualizer {
                     // Apply snap position
                     group.position({ x: snappedX, y: snappedY });
 
-                    if (mode === 'LOGICAL') {
+                    if (mode === 'CONFIGURATION') {
                         // Convert pixel position to grid coordinates (using 24px grid)
                         const col = Math.round(snappedX / 24);
                         const row = Math.round(snappedY / 24);
@@ -894,7 +1081,7 @@ export class Visualizer {
 
         // Update draggable state based on mode only (not selection)
         const mode = this.dataStore.getState().meta.mode;
-        const isDraggable = mode === 'PHYSICAL' || mode === 'LOGICAL' || mode === 'NETWORK';
+        const isDraggable = mode === 'INSTALLATION' || mode === 'CONFIGURATION' || mode === 'NETWORK';
 
         Object.keys(this.nodeGroups).forEach(nodeId => {
             const group = this.nodeGroups[nodeId];
@@ -929,21 +1116,35 @@ export class Visualizer {
             // Use block color for selection, keep blue for source
             const highlightColor = isSource ? '#3b82f6' : nodeColor;
 
-            // Increase size for more padding
-            // PHYSICAL: 24x24 -> Highlight 36x36 (offset -6)
-            // LOGICAL: 100x60 -> Highlight 112x72 (offset -6)
-            const isPhysical = this.dataStore.getState().meta.mode === 'PHYSICAL' || this.dataStore.getState().meta.mode === 'NETWORK';
+            // Get actual block size from rect element
+            const rect = group.findOne('Rect');
+            const isPhysical = mode === 'INSTALLATION' || mode === 'NETWORK';
+            
+            let blockWidth, blockHeight, cornerRadius;
+            if (rect) {
+                // Use actual block dimensions
+                blockWidth = rect.width();
+                blockHeight = rect.height();
+                cornerRadius = rect.cornerRadius() || 0;
+            } else {
+                // Fallback to default sizes if rect not found
+                blockWidth = isPhysical ? 16.8 : 70;
+                blockHeight = isPhysical ? 16.8 : 42;
+                cornerRadius = isPhysical ? 5.6 : 8.4;
+            }
 
+            // Increase size for padding (6px offset on each side = 12px total)
+            const highlightPadding = 6;
             const highlight = new Konva.Rect({
                 name: isSource ? 'source-highlight' : 'selection-highlight',
-                width: isPhysical ? 36 : 112,
-                height: isPhysical ? 36 : 72,
-                x: -6,
-                y: -6,
+                width: blockWidth + (highlightPadding * 2),
+                height: blockHeight + (highlightPadding * 2),
+                x: -highlightPadding,
+                y: -highlightPadding,
                 fill: 'transparent',
                 stroke: highlightColor,
                 strokeWidth: 2, // Slightly thinner for elegance
-                cornerRadius: isPhysical ? 8 : 12,
+                cornerRadius: cornerRadius > 0 ? cornerRadius + (highlightPadding * 0.5) : 0, // Adjust corner radius proportionally
                 dash: isSource ? [5, 5] : []
             });
             group.add(highlight);
@@ -1138,24 +1339,24 @@ export class Visualizer {
             return {
                 x: group.x(),
                 y: group.y(),
-                width: mode === 'PHYSICAL' ? 24 : 100,
-                height: mode === 'PHYSICAL' ? 24 : 60
+                width: mode === 'INSTALLATION' ? 16.8 : 70, // Scaled 0.7x
+                height: mode === 'INSTALLATION' ? 16.8 : 42  // Scaled 0.7x
             };
         }
 
-        if (mode === 'PHYSICAL') {
+        if (mode === 'INSTALLATION') {
             return {
                 x: node.physicalPos?.x || 0,
                 y: node.physicalPos?.y || 0,
-                width: 24,
-                height: 24
+                width: 16.8,
+                height: 16.8
             };
         } else {
             return {
                 x: (node.logicalPos?.col || 0) * 24,
                 y: (node.logicalPos?.row || 0) * 24,
-                width: 100,
-                height: 60
+                width: 70,
+                height: 42
             };
         }
     }
@@ -1440,7 +1641,7 @@ export class Visualizer {
 
     updateConnectionBendHandles() {
         const mode = this.dataStore.getState().meta.mode;
-        const editableMode = (mode === 'LOGICAL' || mode === 'PHYSICAL' || mode === 'NETWORK');
+        const editableMode = (mode === 'CONFIGURATION' || mode === 'INSTALLATION' || mode === 'NETWORK');
 
         // Remove handles that should not exist
         Object.keys(this.connectionBendHandles).forEach(connId => {
@@ -1562,7 +1763,7 @@ export class Visualizer {
     }
 
     setConnectionBendX(connId, mode, bendX) {
-        const field = (mode === 'LOGICAL') ? 'bendXLogical' : 'bendXPhysical';
+        const field = (mode === 'CONFIGURATION') ? 'bendXLogical' : 'bendXPhysical';
         this.dataStore.updateConnection(connId, { [field]: bendX });
     }
 
@@ -1596,7 +1797,10 @@ export class Visualizer {
     }
 
     getConnectionBendX(conn, mode) {
-        const field = (mode === 'LOGICAL') ? 'bendXLogical' : 'bendXPhysical';
+        if (this.tempBendOverrides && this.tempBendOverrides[conn.id] !== undefined) {
+            return this.tempBendOverrides[conn.id];
+        }
+        const field = (mode === 'CONFIGURATION') ? 'bendXLogical' : 'bendXPhysical';
         return conn[field];
     }
 
@@ -1664,7 +1868,7 @@ export class Visualizer {
             const node = nodes[nodeId];
             if (!node) return;
 
-            if (mode === 'LOGICAL') {
+            if (mode === 'CONFIGURATION') {
                 const currentCol = node.logicalPos?.col || 0;
                 const currentRow = node.logicalPos?.row || 0;
                 const newCol = currentCol + (dx / 24);

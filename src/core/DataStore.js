@@ -2,7 +2,7 @@ export class DataStore {
     constructor() {
         this.projectData = {
             meta: {
-                mode: 'LOGICAL', // 'LOGICAL' | 'PHYSICAL' | 'REQUEST' | 'HARDWARE_LIST'
+                mode: 'CONFIGURATION', // 'CONFIGURATION' | 'INSTALLATION' | 'REQUEST' | 'HARDWARE_LIST'
                 floorPlanImage: null,
                 bomMetadata: {},
                 hardwareListMetadata: {}, // Store remark and other metadata for hardware list items

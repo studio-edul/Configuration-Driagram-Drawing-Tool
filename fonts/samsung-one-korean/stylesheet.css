@@ -1,0 +1,156 @@
+@font-face {
+    font-family: 'SamsungOneKorean 200';
+    src: url('SamsungOneKorean-200.eot');
+    src: local('SamsungOneKorean 200'), local('SamsungOneKorean-200'),
+        url('SamsungOneKorean-200.eot?#iefix') format('embedded-opentype'),
+        url('SamsungOneKorean-200.woff2') format('woff2'),
+        url('SamsungOneKorean-200.woff') format('woff'),
+        url('SamsungOneKorean-200.ttf') format('truetype');
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'SamsungOneKorean 200C';
+    src: url('SamsungOneKorean-200C.eot');
+    src: local('SamsungOneKorean 200C'), local('SamsungOneKorean-200C'),
+        url('SamsungOneKorean-200C.eot?#iefix') format('embedded-opentype'),
+        url('SamsungOneKorean-200C.woff2') format('woff2'),
+        url('SamsungOneKorean-200C.woff') format('woff'),
+        url('SamsungOneKorean-200C.ttf') format('truetype');
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'SamsungOneKorean 300';
+    src: url('SamsungOneKorean-300.eot');
+    src: local('SamsungOneKorean 300'), local('SamsungOneKorean-300'),
+        url('SamsungOneKorean-300.eot?#iefix') format('embedded-opentype'),
+        url('SamsungOneKorean-300.woff2') format('woff2'),
+        url('SamsungOneKorean-300.woff') format('woff'),
+        url('SamsungOneKorean-300.ttf') format('truetype');
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'SamsungOneKorean 400';
+    src: url('SamsungOneKorean-400.eot');
+    src: local('SamsungOneKorean 400'), local('SamsungOneKorean-400'),
+        url('SamsungOneKorean-400.eot?#iefix') format('embedded-opentype'),
+        url('SamsungOneKorean-400.woff2') format('woff2'),
+        url('SamsungOneKorean-400.woff') format('woff'),
+        url('SamsungOneKorean-400.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'SamsungOneKorean 300C';
+    src: url('SamsungOneKorean-300C.eot');
+    src: local('SamsungOneKorean 300C'), local('SamsungOneKorean-300C'),
+        url('SamsungOneKorean-300C.eot?#iefix') format('embedded-opentype'),
+        url('SamsungOneKorean-300C.woff2') format('woff2'),
+        url('SamsungOneKorean-300C.woff') format('woff'),
+        url('SamsungOneKorean-300C.ttf') format('truetype');
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'SamsungOneKorean 400C';
+    src: url('SamsungOneKorean-400C.eot');
+    src: local('SamsungOneKorean 400C'), local('SamsungOneKorean-400C'),
+        url('SamsungOneKorean-400C.eot?#iefix') format('embedded-opentype'),
+        url('SamsungOneKorean-400C.woff2') format('woff2'),
+        url('SamsungOneKorean-400C.woff') format('woff'),
+        url('SamsungOneKorean-400C.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'SamsungOneKorean 500';
+    src: url('SamsungOneKorean-500.eot');
+    src: local('SamsungOneKorean 500'), local('SamsungOneKorean-500'),
+        url('SamsungOneKorean-500.eot?#iefix') format('embedded-opentype'),
+        url('SamsungOneKorean-500.woff2') format('woff2'),
+        url('SamsungOneKorean-500.woff') format('woff'),
+        url('SamsungOneKorean-500.ttf') format('truetype');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'SamsungOneKorean 500C';
+    src: url('SamsungOneKorean-500C.eot');
+    src: local('SamsungOneKorean 500C'), local('SamsungOneKorean-500C'),
+        url('SamsungOneKorean-500C.eot?#iefix') format('embedded-opentype'),
+        url('SamsungOneKorean-500C.woff2') format('woff2'),
+        url('SamsungOneKorean-500C.woff') format('woff'),
+        url('SamsungOneKorean-500C.ttf') format('truetype');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'SamsungOneKorean 600';
+    src: url('SamsungOneKorean-600.eot');
+    src: local('SamsungOneKorean 600'), local('SamsungOneKorean-600'),
+        url('SamsungOneKorean-600.eot?#iefix') format('embedded-opentype'),
+        url('SamsungOneKorean-600.woff2') format('woff2'),
+        url('SamsungOneKorean-600.woff') format('woff'),
+        url('SamsungOneKorean-600.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'SamsungOneKorean 600C';
+    src: url('SamsungOneKorean-600C.eot');
+    src: local('SamsungOneKorean 600C'), local('SamsungOneKorean-600C'),
+        url('SamsungOneKorean-600C.eot?#iefix') format('embedded-opentype'),
+        url('SamsungOneKorean-600C.woff2') format('woff2'),
+        url('SamsungOneKorean-600C.woff') format('woff'),
+        url('SamsungOneKorean-600C.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'SamsungOneKorean 700';
+    src: url('SamsungOneKorean-700.eot');
+    src: local('SamsungOneKorean 700'), local('SamsungOneKorean-700'),
+        url('SamsungOneKorean-700.eot?#iefix') format('embedded-opentype'),
+        url('SamsungOneKorean-700.woff2') format('woff2'),
+        url('SamsungOneKorean-700.woff') format('woff'),
+        url('SamsungOneKorean-700.ttf') format('truetype');
+    font-weight: bold;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'SamsungOneKorean 700C';
+    src: url('SamsungOneKorean-700C.eot');
+    src: local('SamsungOneKorean 700C'), local('SamsungOneKorean-700C'),
+        url('SamsungOneKorean-700C.eot?#iefix') format('embedded-opentype'),
+        url('SamsungOneKorean-700C.woff2') format('woff2'),
+        url('SamsungOneKorean-700C.woff') format('woff'),
+        url('SamsungOneKorean-700C.ttf') format('truetype');
+    font-weight: bold;
+    font-style: normal;
+    font-display: swap;
+}
+

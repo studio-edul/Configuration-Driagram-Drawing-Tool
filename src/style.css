@@ -1,6 +1,31 @@
+/* Samsung Sharp Sans Font Face */
+@font-face {
+    font-family: 'Samsung Sharp Sans';
+    src: url('../fonts/samsung-sharp-sans/samsungsharpsans.otf') format('opentype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Samsung Sharp Sans';
+    src: url('../fonts/samsung-sharp-sans/samsungsharpsans-medium.otf') format('opentype');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Samsung Sharp Sans';
+    src: url('../fonts/samsung-sharp-sans/samsungsharpsans-bold.otf') format('opentype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
 /* Custom Styles */
 body {
-    font-family: 'Noto Sans KR', sans-serif;
+    font-family: 'Samsung Sharp Sans', 'Noto Sans KR', sans-serif;
 }
 
 #canvas-container {

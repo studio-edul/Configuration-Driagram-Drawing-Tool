@@ -1,3 +1,26 @@
+/**
+ * PPT Export Manager
+ * 
+ * PptxGenJS 라이브러리를 사용하여 PowerPoint 프레젠테이션을 생성합니다.
+ * 
+ * 참고 자료:
+ * - 공식 문서: https://gitbrent.github.io/PptxGenJS/
+ * - GitHub 저장소: https://github.com/gitbrent/PptxGenJS/tree/master
+ * - Shape API 문서: https://gitbrent.github.io/PptxGenJS/docs/api-shapes/
+ * 
+ * 사용 가능한 ShapeType (pres.ShapeType.*):
+ * - rect: 일반 사각형
+ * - roundRect: 둥근 모서리 사각형 (rectRadius 옵션 필요, 0-1 비율)
+ *   참고: TypeScript 정의에서 shapes.ROUNDED_RECTANGLE = 'roundRect'이지만,
+ *         실제 ShapeType enum에는 'roundRect'로 정의됨
+ * - ellipse: 타원형
+ * - line: 직선
+ * - triangle: 삼각형
+ * - 등등... (약 200개 이상의 도형 타입 지원)
+ * 
+ * 전체 ShapeType 목록은 GitHub 저장소의 types 폴더 또는 소스 코드에서 확인 가능:
+ * https://github.com/gitbrent/PptxGenJS/tree/master/types
+ */
 export class PPTExportManager {
     constructor(dataStore) {
         this.dataStore = dataStore;
@@ -5,25 +28,122 @@ export class PPTExportManager {
 
     exportToPPT(nodes, connections, hardwareList) {
         try {
+            const data = this.dataStore.getState();
+            
+            // Filter nodes to only include those visible on canvas (within canvas bounds)
+            // Canvas dimensions: VIRTUAL_WIDTH = 960.26, VIRTUAL_HEIGHT = 540
+            const VIRTUAL_WIDTH = 960.26;
+            const VIRTUAL_HEIGHT = 540;
+            const visibleNodes = {};
+            Object.entries(nodes).forEach(([id, node]) => {
+                let isVisible = false;
+                if (node.logicalPos) {
+                    // Configuration mode: check if within grid bounds
+                    const col = node.logicalPos.col || 0;
+                    const row = node.logicalPos.row || 0;
+                    const nodeX = col * 24;
+                    const nodeY = row * 24;
+                    const nodeW = 70;
+                    const nodeH = 42;
+                    // Check if node intersects with canvas area
+                    isVisible = nodeX < VIRTUAL_WIDTH && nodeY < VIRTUAL_HEIGHT && 
+                               (nodeX + nodeW) > 0 && (nodeY + nodeH) > 0;
+                } else if (node.physicalPos) {
+                    // Installation/Network mode: check if within canvas bounds
+                    const nodeX = node.physicalPos.x || 0;
+                    const nodeY = node.physicalPos.y || 0;
+                    const nodeW = 16.8;
+                    const nodeH = 16.8;
+                    // Check if node intersects with canvas area
+                    isVisible = nodeX < VIRTUAL_WIDTH && nodeY < VIRTUAL_HEIGHT && 
+                               (nodeX + nodeW) > 0 && (nodeY + nodeH) > 0;
+                }
+                if (isVisible) {
+                    visibleNodes[id] = node;
+                }
+            });
+
+            // Filter connections to only include those connected to visible nodes
+            const visibleNodeIds = new Set(Object.keys(visibleNodes));
+            const visibleConnections = {};
+            Object.entries(connections).forEach(([id, conn]) => {
+                if (visibleNodeIds.has(conn.source) && visibleNodeIds.has(conn.target)) {
+                    visibleConnections[id] = conn;
+                }
+            });
+            
             // 1. Initialize PptxGenJS
             const pres = new PptxGenJS();
+            
+            // Debug: Check available shape types
+            if (typeof pres.ShapeType === 'undefined') {
+                console.error('pres.ShapeType is undefined!');
+            } else {
+                // Log available shape types for debugging
+                const shapeTypeKeys = Object.keys(pres.ShapeType).filter(key => 
+                    key.toLowerCase().includes('rect') || key.toLowerCase().includes('round')
+                );
+                if (shapeTypeKeys.length > 0) {
+                    console.log('Available rectangle-related shape types:', shapeTypeKeys);
+                }
+            }
             pres.layout = 'LAYOUT_16x9';
 
-            // --- Slide 1: Configuration (Logical) ---
-            this.addDiagramSlide(pres, 'System Configuration', nodes, connections, 'LOGICAL');
+            // --- Slide 1: Configuration ---
+            this.addDiagramSlide(pres, 'System Configuration', visibleNodes, visibleConnections, 'CONFIGURATION');
 
-            // --- Slide 2: Installation (Physical) ---
-            this.addDiagramSlide(pres, 'Cable Guide', nodes, connections, 'PHYSICAL');
+            // --- Slide 2: Installation ---
+            this.addDiagramSlide(pres, 'Cable Guide', visibleNodes, visibleConnections, 'INSTALLATION');
 
-            // --- Slide 3: Local Hardware List ---
-            this.addTableSlide(pres, 'Hardware List - Local', hardwareList);
+            // --- Slide 3: Network ---
+            const networkNodes = data.networkNodes || {};
+            const networkConnections = data.networkConnections || {};
+            // Filter network nodes/connections too
+            const visibleNetworkNodes = {};
+            const visibleNetworkNodeIds = new Set();
+            Object.entries(networkNodes).forEach(([id, node]) => {
+                if (node.physicalPos) {
+                    const nodeX = node.physicalPos.x || 0;
+                    const nodeY = node.physicalPos.y || 0;
+                    const nodeW = 16.8;
+                    const nodeH = 16.8;
+                    const isVisible = nodeX < VIRTUAL_WIDTH && nodeY < VIRTUAL_HEIGHT && 
+                                     (nodeX + nodeW) > 0 && (nodeY + nodeH) > 0;
+                    if (isVisible) {
+                        visibleNetworkNodes[id] = node;
+                        visibleNetworkNodeIds.add(id);
+                    }
+                }
+            });
+            const visibleNetworkConnections = {};
+            Object.entries(networkConnections).forEach(([id, conn]) => {
+                if (visibleNetworkNodeIds.has(conn.source) && visibleNetworkNodeIds.has(conn.target)) {
+                    visibleNetworkConnections[id] = conn;
+                }
+            });
+            this.addDiagramSlide(pres, 'Network', visibleNetworkNodes, visibleNetworkConnections, 'NETWORK');
 
-            // --- Slide 4: I M Fine Hardware List ---
-            this.addTableSlide(pres, 'Hardware List - I M Fine', hardwareList);
+            // --- Slide 4 & 5: Hardware List ---
+            // Get hardware list from actual web table (HardwareListManager)
+            this.addHardwareListSlides(pres);
 
             // Save File
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-            pres.writeFile({ fileName: `Hardware_Config_${timestamp}.pptx` });
+            const fileName = `Hardware_Config_${timestamp}.pptx`;
+            
+            // Store connection segments info for grouping after file is written
+            // This will be used to group segments in PPTX XML
+            const allConnectionSegments = {}; // Map<slideIndex, Map<connId, segments>>
+            
+            // Write file - PptxGenJS doesn't support blob output directly
+            // We'll use writeFile and then modify the file if JSZip is available
+            // For now, save file normally - grouping will be implemented via PPTX XML manipulation
+            pres.writeFile({ fileName: fileName }).then(() => {
+                console.log('PPT file saved. Note: Connection grouping requires JSZip and PPTX XML manipulation.');
+                console.log('To group connection segments, you may need to manually group them in PowerPoint or implement full XML manipulation.');
+            }).catch(err => {
+                console.error('Error saving PPT file:', err);
+            });
 
             return true;
         } catch (error) {
@@ -33,198 +153,889 @@ export class PPTExportManager {
     }
 
     addDiagramSlide(pres, title, nodes, connections, mode) {
-        const slide = pres.addSlide();
-        const PX_TO_INCH = 1 / 96;
+        try {
+            const slide = pres.addSlide();
+            // Use 72 DPI to match Visualizer (72 DPI for 33.876cm x 19.05cm)
+            const PX_TO_INCH = 1 / 72;
 
-        // 1. Calculate Bounding Box
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        let hasNodes = false;
+            // Validate inputs
+            if (!nodes) nodes = {};
+            if (!connections) connections = {};
 
-        Object.values(nodes).forEach(node => {
-            let x, y, w, h;
-            if (mode === 'PHYSICAL') {
-                x = node.physicalPos?.x || 0;
-                y = node.physicalPos?.y || 0;
-                w = 24;
-                h = 24;
-            } else {
-                x = (node.logicalPos?.col || 0) * 24;
-                y = (node.logicalPos?.row || 0) * 24;
-                w = 100;
-                h = 60;
-            }
-            minX = Math.min(minX, x);
-            minY = Math.min(minY, y);
-            maxX = Math.max(maxX, x + w);
-            maxY = Math.max(maxY, y + h);
-            hasNodes = true;
-        });
-
-        if (!hasNodes) {
-            minX = 0; minY = 0; maxX = 800; maxY = 600;
-        }
-
-        // Add padding
-        const padding = 50;
-        minX -= padding;
-        minY -= padding;
-        maxX += padding;
-        maxY += padding;
-
-        const contentW = maxX - minX;
-        const contentH = maxY - minY;
+            // 1. Define Fixed Stage Dimensions (Exact replica of Web Stage)
+            const VIRTUAL_WIDTH = 960.26;
+            const VIRTUAL_HEIGHT = 540;
 
         // 2. Calculate Transform to fit slide (10 x 5.625 inches)
-        // Leave margins: 0.5 inch
+        // We map the entire virtual stage to the entire slide area to ensure WYSIWYG
         const slideW = 10;
         const slideH = 5.625;
-        const margin = 0.5;
-        const availW = slideW - (margin * 2);
-        const availH = slideH - (margin * 2);
 
-        const scaleX = availW / (contentW * PX_TO_INCH);
-        const scaleY = availH / (contentH * PX_TO_INCH);
-        const scale = Math.min(scaleX, scaleY, 1); // Don't upscale, max 1
+        // No margins, map 1:1 to slide edges (or maybe extremely small margin if printer requires, but user wants screen replica)
+        // Let's stick to 1:1 mapping of Stage -> Slide
+
+        const scaleX = slideW / (VIRTUAL_WIDTH * PX_TO_INCH);
+        const scaleY = slideH / (VIRTUAL_HEIGHT * PX_TO_INCH);
+        // They should be almost identical (both 16:9), pick one used for global scale
+        const scale = Math.min(scaleX, scaleY);
 
         const transform = {
             scale: scale,
-            originX: minX * PX_TO_INCH,
-            originY: minY * PX_TO_INCH,
-            offsetX: margin + (availW - (contentW * PX_TO_INCH * scale)) / 2,
-            offsetY: margin + (availH - (contentH * PX_TO_INCH * scale)) / 2
+            originX: 0,
+            originY: 0,
+            offsetX: 0,
+            offsetY: 0
         };
 
+        // 2.5. Add Background Image (for INSTALLATION and NETWORK modes)
+        // Match web layout calculation for background image
+        if ((mode === 'INSTALLATION' || mode === 'NETWORK') && this.dataStore.getState().meta.floorPlanImage) {
+            const floorPlanImage = this.dataStore.getState().meta.floorPlanImage;
+            
+            // Match web layout calculation
+            const VIRTUAL_WIDTH_PX = 960.26;
+            const VIRTUAL_HEIGHT_PX = 540;
+            const titleHeight = 90; // Adjusted top margin
+            const legendWidth = 160; // Technical List width
+            const padding = 30; // Adjusted padding
+            
+            const availableWidthPx = VIRTUAL_WIDTH_PX - legendWidth - (padding * 2);
+            const availableHeightPx = VIRTUAL_HEIGHT_PX - titleHeight - (padding * 2);
+            
+            // Load image synchronously to get dimensions (image should already be loaded)
+            const img = new Image();
+            try {
+                // Set src and wait for load
+                img.src = floorPlanImage;
+                
+                // If image is already cached, dimensions are available immediately
+                if (img.complete && img.naturalWidth > 0) {
+                    const imgWidth = img.naturalWidth || img.width;
+                    const imgHeight = img.naturalHeight || img.height;
+                    
+                    if (imgWidth && imgHeight) {
+                        const imgRatio = imgWidth / imgHeight;
+                        const availableRatio = availableWidthPx / availableHeightPx;
+                        
+                        let newWidthPx, newHeightPx;
+                        
+                        // Fit to available space (same logic as web)
+                        if (imgRatio > availableRatio) {
+                            // Limited by width
+                            newWidthPx = availableWidthPx;
+                            newHeightPx = availableWidthPx / imgRatio;
+                        } else {
+                            // Limited by height
+                            newHeightPx = availableHeightPx;
+                            newWidthPx = availableHeightPx * imgRatio;
+                        }
+                        
+                        // Convert to inches and apply transform
+                        const imgXInch = (padding + (availableWidthPx - newWidthPx) / 2) * PX_TO_INCH * transform.scale;
+                        const imgYInch = (VIRTUAL_HEIGHT_PX - newHeightPx - padding) * PX_TO_INCH * transform.scale;
+                        const imgWInch = newWidthPx * PX_TO_INCH * transform.scale;
+                        const imgHInch = newHeightPx * PX_TO_INCH * transform.scale;
+                        
+                        // Add image to slide
+                        slide.addImage({
+                            data: floorPlanImage,
+                            x: imgXInch,
+                            y: imgYInch,
+                            w: imgWInch,
+                            h: imgHInch,
+                            sizing: {
+                                type: 'contain',
+                                w: imgWInch,
+                                h: imgHInch
+                            }
+                        });
+                    }
+                } else {
+                    // Image not loaded yet, try async load
+                    img.onload = () => {
+                        const imgWidth = img.naturalWidth || img.width;
+                        const imgHeight = img.naturalHeight || img.height;
+                        
+                        if (imgWidth && imgHeight) {
+                            const imgRatio = imgWidth / imgHeight;
+                            const availableRatio = availableWidthPx / availableHeightPx;
+                            
+                            let newWidthPx, newHeightPx;
+                            
+                            if (imgRatio > availableRatio) {
+                                newWidthPx = availableWidthPx;
+                                newHeightPx = availableWidthPx / imgRatio;
+                            } else {
+                                newHeightPx = availableHeightPx;
+                                newWidthPx = availableHeightPx * imgRatio;
+                            }
+                            
+                            const imgXInch = (padding + (availableWidthPx - newWidthPx) / 2) * PX_TO_INCH * transform.scale;
+                            const imgYInch = (VIRTUAL_HEIGHT_PX - newHeightPx - padding) * PX_TO_INCH * transform.scale;
+                            const imgWInch = newWidthPx * PX_TO_INCH * transform.scale;
+                            const imgHInch = newHeightPx * PX_TO_INCH * transform.scale;
+                            
+                            slide.addImage({
+                                data: floorPlanImage,
+                                x: imgXInch,
+                                y: imgYInch,
+                                w: imgWInch,
+                                h: imgHInch,
+                                sizing: {
+                                    type: 'contain',
+                                    w: imgWInch,
+                                    h: imgHInch
+                                }
+                            });
+                        }
+                    };
+                    img.onerror = () => {
+                        console.warn('Failed to load background image for PPT export');
+                    };
+                }
+            } catch (error) {
+                console.warn('Error adding background image to PPT:', error);
+            }
+        }
+
         // 3. Add Title
+        // Web: x = width * 0.04, y = width * 0.04
+        // PPT: x = 10 * 0.04 = 0.4 inch, y = 10 * 0.04 = 0.4 inch
+        // Web Font: 48px -> PPT Font: 36pt (approx 48 * 0.75)
+        // Adjust y position slightly down to account for font baseline differences
         if (title) {
             slide.addText(title, {
-                x: 0.4, y: 0.2, fontSize: 18, bold: true, color: '363636'
+                x: 0.4, 
+                y: 0.45, // Slightly lower to account for font baseline (was 0.4)
+                w: 9.2, // Width for text box
+                h: 0.6, // Height for text box (36pt font needs ~0.6 inch)
+                fontSize: 36,
+                bold: true,
+                color: '363636',
+                fontFace: 'Samsung Sharp Sans', // Match web font
+                valign: 'top' // Align text to top of text box
             });
         }
 
         // 4. Render Connections
-        if (connections) {
-            Object.values(connections).forEach(conn => {
-                this.renderConnection(pres, slide, conn, nodes, mode, transform);
-            });
+        // Calculate layout for all connections together to get proper port offsets
+        // (Port offsets are distributed when multiple connections share the same node side)
+        // Store connection shape objects for grouping using addGroup
+        const connectionShapeGroups = {}; // Map<connId, Array<shapeObjects>>
+        
+        if (connections && Object.keys(connections).length > 0) {
+            if (window.app && window.app.visualizer) {
+                try {
+                    const result = window.app.visualizer.calculateConnectionLayout(connections, nodes, mode);
+                    const layout = result.layout || result;
+                    
+                    // Render each connection using the calculated layout
+                    Object.values(connections).forEach(conn => {
+                        const points = layout[conn.id];
+                        if (points && Array.isArray(points) && points.length >= 4) {
+                            const shapeObjects = this.renderConnectionFromPoints(pres, slide, conn, points, transform);
+                            if (shapeObjects && shapeObjects.length > 0) {
+                                connectionShapeGroups[conn.id] = shapeObjects;
+                            }
+                        }
+                    });
+                } catch (error) {
+                    console.warn('Failed to calculate connection layout, falling back to individual calculation:', error);
+                    // Fallback: render connections individually
+                    Object.values(connections).forEach(conn => {
+                        const shapeObjects = this.renderConnection(pres, slide, conn, nodes, mode, transform);
+                        if (shapeObjects && shapeObjects.length > 0) {
+                            connectionShapeGroups[conn.id] = shapeObjects;
+                        }
+                    });
+                }
+            } else {
+                console.warn('Visualizer not available for connection rendering');
+            }
         }
+        
+        // Group connection segments - PptxGenJS addGroup may not be available in all versions
+        // For now, add shapes individually (grouping can be done manually in PowerPoint if needed)
+        Object.keys(connectionShapeGroups).forEach(connId => {
+            const shapeObjects = connectionShapeGroups[connId];
+            if (shapeObjects && shapeObjects.length > 0) {
+                // Add all segments individually
+                shapeObjects.forEach(shapeObj => {
+                    slide.addShape(shapeObj.shape, shapeObj);
+                });
+            }
+        });
 
         // 5. Render Nodes
         Object.values(nodes).forEach(node => {
             let x, y, w, h;
-            if (mode === 'PHYSICAL') {
-                x = (node.physicalPos?.x || 0) * PX_TO_INCH;
-                y = (node.physicalPos?.y || 0) * PX_TO_INCH;
-                w = 24 * PX_TO_INCH;
-                h = 24 * PX_TO_INCH;
+            if (mode === 'INSTALLATION' || mode === 'NETWORK') {
+                // Match web: use physicalPos with default 0 if missing
+                // Web: x = node.physicalPos?.x || 0
+                if (!node.physicalPos) {
+                    console.warn(`Node ${node.id} missing physicalPos in ${mode} mode, skipping`);
+                    return; // Skip nodes without physicalPos in INSTALLATION/NETWORK mode
+                }
+                const physicalX = node.physicalPos.x ?? 0;
+                const physicalY = node.physicalPos.y ?? 0;
+                x = physicalX * PX_TO_INCH;
+                y = physicalY * PX_TO_INCH;
+                w = 16.8 * PX_TO_INCH; // Match web: 16.8x16.8
+                h = 16.8 * PX_TO_INCH;
+                
+                // Debug: Log physicalPos values
+                if (physicalX === 0 && physicalY === 0) {
+                    console.warn(`Node ${node.id} has physicalPos at (0, 0) in ${mode} mode`);
+                }
             } else {
+                // CONFIGURATION mode: calculate block size based on text length with padding
                 const col = node.logicalPos?.col || 0;
                 const row = node.logicalPos?.row || 0;
                 x = (col * 24) * PX_TO_INCH;
                 y = (row * 24) * PX_TO_INCH;
-                w = 100 * PX_TO_INCH;
-                h = 60 * PX_TO_INCH;
+                
+                // Base size
+                const baseW = 70 * PX_TO_INCH;
+                const baseH = 42 * PX_TO_INCH;
+                const minBoxWidth = baseW;
+                
+                // Padding inside block (5px each side, match web)
+                const padding = 5 * PX_TO_INCH;
+                
+                const fontSize = 15;
+                const avgCharWidth = fontSize * 0.6 / 72; // Approximate character width in inches
+                
+                // Process type text
+                const typeTextStr = node.type || 'Unknown';
+                const hasSpacesInType = typeTextStr.includes(' ');
+                const typeTextWidth = typeTextStr.length * avgCharWidth;
+                let finalW = baseW;
+                
+                // If type has no spaces and is wider than block, expand block width
+                if (!hasSpacesInType && typeTextWidth + (padding * 2) > baseW) {
+                    finalW = Math.max(minBoxWidth, typeTextWidth + (padding * 2));
+                }
+                
+                // Process model text if exists
+                let modelTextStr = '';
+                let hasSpacesInModel = false;
+                let modelTextWidth = 0;
+                if (node.model && node.model.trim() !== '') {
+                    modelTextStr = node.model;
+                    hasSpacesInModel = modelTextStr.includes(' ');
+                    modelTextWidth = modelTextStr.length * avgCharWidth;
+                    
+                    // If model is wider, expand block width (but only if no spaces)
+                    if (!hasSpacesInModel && modelTextWidth + (padding * 2) > finalW) {
+                        finalW = Math.max(finalW, modelTextWidth + (padding * 2));
+                    }
+                }
+                
+                const textW = finalW - (padding * 2); // Available width for text
+                
+                // Calculate height: if text has spaces, allow wrapping; otherwise single line
+                let adjustedH = baseH;
+                if (hasSpacesInType || hasSpacesInModel) {
+                    // Has spaces: calculate wrapping height
+                    const fullText = typeTextStr + (modelTextStr ? `\n${modelTextStr}` : '');
+                    const textLength = fullText.length;
+                    const estimatedTextWidth = textLength * avgCharWidth;
+                    
+                    if (estimatedTextWidth > textW) {
+                        const charsPerLine = Math.floor(textW / avgCharWidth);
+                        const linesNeeded = Math.ceil(textLength / charsPerLine);
+                        const lineHeight = fontSize * 1.2 / 72; // Line height in inches
+                        adjustedH = Math.max(baseH, linesNeeded * lineHeight);
+                    }
+                } else {
+                    // No spaces: single line, but ensure minimum height
+                    adjustedH = baseH;
+                }
+                
+                w = finalW;
+                h = adjustedH;
             }
 
             // Apply Transform
+            const xBeforeTransform = x;
+            const yBeforeTransform = y;
             x = (x - transform.originX) * transform.scale + transform.offsetX;
             y = (y - transform.originY) * transform.scale + transform.offsetY;
             w = w * transform.scale;
             h = h * transform.scale;
 
-            const fillColor = (node.color || '94a3b8').replace('#', '');
-            const radius = mode === 'PHYSICAL' ? 8 : 4; // PPT uses points/pixels roughly? No, shape radius is 0-1 or points. PptxGenJS rectRadius is 0-1? No, usually points.
-            // PptxGenJS rectRadius is confusing, let's stick to simple rect for now or small value.
-
-            slide.addShape(pres.ShapeType.rect, {
-                x: x, y: y, w: w, h: h,
-                fill: { color: fillColor },
-                line: { color: '000000', width: 1 },
-                rectRadius: 0.1 // Small radius
-            });
-
-            // Text
-            let text = node.type || 'Unknown';
-            if (mode === 'LOGICAL' && node.model) {
-                text += `\n${node.model}`;
+            // Validate dimensions (must be positive)
+            if (w <= 0 || h <= 0 || isNaN(x) || isNaN(y) || isNaN(w) || isNaN(h)) {
+                console.warn(`Invalid node dimensions for ${node.id} (${mode}): x=${x}, y=${y}, w=${w}, h=${h}, beforeTransform: x=${xBeforeTransform}, y=${yBeforeTransform}, physicalPos:`, node.physicalPos);
+                return; // Skip this node
             }
 
-            slide.addText(text, {
-                x: x, y: y, w: w, h: h,
-                align: 'center', valign: 'middle',
-                fontSize: (mode === 'PHYSICAL' ? 6 : 10) * transform.scale,
-                color: '000000' // Black text for visibility
-            });
-        });
-    }
+            let fillColor = (node.color || '94a3b8').replace('#', '').toUpperCase();
+            // Ensure fillColor is valid 6-digit hex (PptxGenJS requirement)
+            if (!/^[0-9A-F]{6}$/.test(fillColor)) {
+                console.warn(`Invalid color for ${node.id}: ${node.color}, using default`);
+                fillColor = '94A3B8';
+            }
+            
+            // INSTALLATION and NETWORK modes: use regular rectangle (no rounded corners)
+            // CONFIGURATION mode: use rounded rectangle
+            if (mode === 'INSTALLATION' || mode === 'NETWORK') {
+                // Use regular rectangle (sharp corners)
+                slide.addShape(pres.ShapeType.rect, {
+                    x: x, y: y, w: w, h: h,
+                    fill: { color: fillColor }
+                    // No line/border - 윤곽선 제거
+                });
+            } else {
+                // CONFIGURATION mode: use rounded rectangle
+                const cornerRadiusRatio = 5.6 / 70; // Configuration cornerRadius = 5.6px on 70px width
+                slide.addShape(pres.ShapeType.roundRect, {
+                    x: x, y: y, w: w, h: h,
+                    fill: { color: fillColor },
+                    rectRadius: cornerRadiusRatio
+                    // No line/border - 윤곽선 제거
+                });
+            }
 
-    renderConnection(pres, slide, conn, nodes, mode, transform) {
-        const PX_TO_INCH = 1 / 96;
-
-        if (!window.app || !window.app.visualizer) return;
-
-        const points = window.app.visualizer.calculateConnectionPoints(conn, nodes, mode);
-        if (!points || !Array.isArray(points) || points.length < 4) return;
-
-        for (let i = 0; i < points.length - 2; i += 2) {
-            let startX = points[i] * PX_TO_INCH;
-            let startY = points[i + 1] * PX_TO_INCH;
-            let endX = points[i + 2] * PX_TO_INCH;
-            let endY = points[i + 3] * PX_TO_INCH;
-
-            // Apply Transform
-            startX = (startX - transform.originX) * transform.scale + transform.offsetX;
-            startY = (startY - transform.originY) * transform.scale + transform.offsetY;
-            endX = (endX - transform.originX) * transform.scale + transform.offsetX;
-            endY = (endY - transform.originY) * transform.scale + transform.offsetY;
-
-            // Sanitize
-            startX = isNaN(startX) ? 0 : startX;
-            startY = isNaN(startY) ? 0 : startY;
-            endX = isNaN(endX) ? 0 : endX;
-            endY = isNaN(endY) ? 0 : endY;
-
-            // Normalize coordinates for PptxGenJS (w and h must be positive)
-            const x = Math.min(startX, endX);
-            const y = Math.min(startY, endY);
-            const w = Math.abs(endX - startX);
-            const h = Math.abs(endY - startY);
-
-            let lineColor = (conn.color && typeof conn.color === 'string') ? conn.color : '#94a3b8';
-            lineColor = lineColor.replace('#', '');
-            if (!/^[0-9A-Fa-f]{6}$/.test(lineColor)) lineColor = '94A3B8';
-
-            slide.addShape(pres.ShapeType.line, {
-                x: x, y: y, w: w, h: h,
-                line: {
-                    color: lineColor,
-                    width: 1.5 * transform.scale, // Scale line width
-                    dashType: (conn.category === 'Cable' && conn.type === 'Wireless') ? 'dash' : 'solid'
+            // Text - only show text in CONFIGURATION mode, not in INSTALLATION or NETWORK
+            if (mode === 'CONFIGURATION') {
+                const typeTextStr = node.type || 'Unknown';
+                const modelTextStr = node.model || '';
+                const hasSpacesInType = typeTextStr.includes(' ');
+                const hasSpacesInModel = modelTextStr.includes(' ');
+                const hasSpaces = hasSpacesInType || hasSpacesInModel;
+                
+                let text = typeTextStr;
+                if (modelTextStr) {
+                    // Configuration mode: show model below type
+                    text += `\n${modelTextStr}`;
                 }
-            });
+
+                // Font size: Web uses 15pt for Configuration mode
+                const fontSize = 15;
+                
+                // Add padding inside block (5px each side, match web)
+                const padding = 5 * PX_TO_INCH * transform.scale;
+                const textX = x + padding;
+                const textY = y;
+                const textW = w - (padding * 2);
+                const textH = h;
+
+                slide.addText(text, {
+                    x: textX, y: textY, w: textW, h: textH,
+                    align: 'center', valign: 'middle',
+                    fontSize: fontSize,
+                    color: 'FFFFFF', // White text to match web (fill: '#ffffff')
+                    fontFace: 'Samsung Sharp Sans', // Match web font
+                    wrap: hasSpaces // Only wrap if there are spaces
+                });
+            }
+            // INSTALLATION and NETWORK modes: no text (empty blocks only)
+        });
+
+        // 6. Render Technical List (Legend)
+        this.renderTechnicalList(pres, slide, nodes, connections, mode, transform);
+        } catch (error) {
+            console.error(`Error in addDiagramSlide (${mode}):`, error);
+            throw error; // Re-throw to be caught by exportToPPT
         }
     }
 
-    addTableSlide(pres, title, hardwareList) {
+    renderConnection(pres, slide, conn, nodes, mode, transform) {
+        // Legacy method: calculate points for single connection
+        // Use 72 DPI to match Visualizer
+        const PX_TO_INCH = 1 / 72;
+
+        if (!window.app || !window.app.visualizer) {
+            console.warn('Visualizer not available for connection rendering');
+            return [];
+        }
+
+        let points;
+        try {
+            points = window.app.visualizer.calculateConnectionPoints(conn, nodes, mode);
+            if (!points || !Array.isArray(points) || points.length < 4) return [];
+        } catch (error) {
+            console.warn('Failed to calculate connection points:', error);
+            return [];
+        }
+
+        return this.renderConnectionFromPoints(pres, slide, conn, points, transform);
+    }
+
+    renderConnectionFromPoints(pres, slide, conn, points, transform) {
+        // Use 72 DPI to match Visualizer
+        const PX_TO_INCH = 1 / 72;
+
+        if (!points || points.length < 4) return [];
+
+        // Convert all points to inches and apply transform
+        const transformedPoints = [];
+        for (let i = 0; i < points.length; i += 2) {
+            let x = points[i] * PX_TO_INCH;
+            let y = points[i + 1] * PX_TO_INCH;
+            
+            // Apply Transform
+            x = (x - transform.originX) * transform.scale + transform.offsetX;
+            y = (y - transform.originY) * transform.scale + transform.offsetY;
+            
+            // Sanitize
+            x = isNaN(x) ? 0 : x;
+            y = isNaN(y) ? 0 : y;
+            
+            transformedPoints.push({ x, y });
+        }
+
+        let lineColor = (conn.color && typeof conn.color === 'string') ? conn.color : '#94a3b8';
+        lineColor = lineColor.replace('#', '').toUpperCase();
+        if (!/^[0-9A-F]{6}$/.test(lineColor)) lineColor = '94A3B8';
+
+        const lineWidth = 1.5 * transform.scale;
+        // Check if connection is Wireless - match web logic: conn.category === 'Cable' && conn.type === 'Wireless'
+        const isWireless = conn.category === 'Cable' && conn.type && conn.type.toLowerCase() === 'wireless';
+        const dashType = isWireless ? 'dash' : 'solid';
+
+        // Store shape objects for grouping using addGroup
+        const shapeObjects = [];
+
+        // Create shape objects for each segment (don't add to slide yet)
+        // These will be grouped together using addGroup
+        for (let i = 0; i < transformedPoints.length - 1; i++) {
+            const start = transformedPoints[i];
+            const end = transformedPoints[i + 1];
+
+            // Normalize coordinates for PptxGenJS (w and h must be positive)
+            const x = Math.min(start.x, end.x);
+            const y = Math.min(start.y, end.y);
+            const w = Math.abs(end.x - start.x);
+            const h = Math.abs(end.y - start.y);
+
+            // Skip zero-length segments
+            if (w < 0.001 && h < 0.001) continue;
+
+            // Create shape object for grouping (format: { shape, x, y, w, h, line })
+            const shapeObj = {
+                shape: pres.ShapeType.line,
+                x: x,
+                y: y,
+                w: w,
+                h: h,
+                line: {
+                    color: lineColor,
+                    width: lineWidth,
+                    dashType: dashType
+                }
+            };
+            
+            shapeObjects.push(shapeObj);
+        }
+
+        // If only one segment, add it directly to slide
+        // If multiple segments, return them for grouping
+        if (shapeObjects.length === 1) {
+            slide.addShape(shapeObjects[0].shape, shapeObjects[0]);
+            return [];
+        }
+
+        return shapeObjects;
+    }
+
+    async groupConnectionsInPPTX(blob, pres, fileName) {
+        // Group connection segments using JSZip
+        // Note: This requires JSZip library to be loaded
+        try {
+            if (typeof JSZip === 'undefined') {
+                console.warn('JSZip not available, saving PPT without grouping');
+                // Fallback: save blob directly
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                a.click();
+                URL.revokeObjectURL(url);
+                return;
+            }
+
+            // Load PPTX file as zip
+            const zip = await JSZip.loadAsync(blob);
+            
+            // Get all slides and group connection segments
+            // This is complex and requires understanding PPTX XML structure
+            // For now, we'll save the file as-is and log a message
+            console.log('PPT file generated. Connection grouping requires manual operation in PowerPoint or advanced XML manipulation.');
+            
+            // Save the modified file
+            const modifiedBlob = await zip.generateAsync({ type: 'blob' });
+            const url = URL.createObjectURL(modifiedBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+        } catch (error) {
+            console.error('Error grouping connections:', error);
+            // Fallback: save blob directly
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    }
+
+    renderTechnicalList(pres, slide, nodes, connections, mode, transform) {
+        try {
+            // Use 72 DPI to match Visualizer
+            const PX_TO_INCH = 1 / 72;
+            const VIRTUAL_WIDTH = 960.26;
+            const VIRTUAL_HEIGHT = 540;
+            const slideW = 10;
+            const slideH = 5.625;
+
+            // Validate inputs
+            if (!nodes || !connections) {
+                console.warn('Nodes or connections not available for technical list');
+                return;
+            }
+
+        // Calculate components and cables
+        const components = {};
+        Object.values(nodes || {}).forEach(node => {
+            if (!node) return;
+            const name = node.model || node.type || 'Unknown';
+            components[name] = (components[name] || 0) + 1;
+        });
+
+        const cables = {};
+        Object.values(connections || {}).forEach(conn => {
+            if (!conn) return;
+            const name = conn.type || 'Unknown';
+            cables[name] = (cables[name] || 0) + 1;
+        });
+
+        const itemCount = Object.keys(components).length + Object.keys(cables).length;
+        
+        // Calculate dimensions (match web version exactly)
+        // Web: legendWidth = 160px, legendHeight = (itemCount * 21) + 53
+        // Even if itemCount is 0, render empty box (minimum height = 53px for header + padding)
+        const legendWidthPx = 160;
+        const legendHeightPx = (itemCount * 21) + 53;
+        const headerHeightPx = 30; // Match web: headerHeight = 30
+        
+        // Convert to inches and apply scale
+        const legendWidthInch = (legendWidthPx * PX_TO_INCH) * transform.scale;
+        const legendHeightInch = (legendHeightPx * PX_TO_INCH) * transform.scale;
+        const headerHeightInch = (headerHeightPx * PX_TO_INCH) * transform.scale;
+
+        // Position: right aligned with padding, vertically centered
+        // Web: legendX = width - legendWidth - (width * 0.04)
+        // Web: legendY = (height - legendHeight) / 2
+        const legendXInch = slideW - legendWidthInch - (slideW * 0.04);
+        const legendYInch = (slideH - legendHeightInch) / 2;
+
+        // Validate dimensions
+        if (legendWidthInch <= 0 || legendHeightInch <= 0 || 
+            isNaN(legendXInch) || isNaN(legendYInch) || 
+            isNaN(legendWidthInch) || isNaN(legendHeightInch)) {
+            console.warn(`Invalid technical list dimensions: x=${legendXInch}, y=${legendYInch}, w=${legendWidthInch}, h=${legendHeightInch}`);
+            return;
+        }
+
+        // Corner radius: Web uses cornerRadius: 0 (sharp corners)
+        // Use regular rect shape (not rounded) to match web
+        const cornerRadiusInch = 0; // Match web: cornerRadius = 0
+
+        // Background rectangle - Technical List box (sharp corners to match web)
+        slide.addShape(pres.ShapeType.rect, {
+            x: legendXInch,
+            y: legendYInch,
+            w: legendWidthInch,
+            h: legendHeightInch,
+            fill: { color: 'FFFFFF' },
+            line: { color: '000000', width: 2 * PX_TO_INCH * transform.scale }, // Thicker border (2px instead of 1px)
+            rectRadius: cornerRadiusInch
+        });
+
+        // Header background (match web: 30px height, sharp corners)
+        slide.addShape(pres.ShapeType.rect, {
+            x: legendXInch,
+            y: legendYInch,
+            w: legendWidthInch,
+            h: headerHeightInch,
+            fill: { color: '000000' },
+            rectRadius: cornerRadiusInch
+        });
+
+        // Header text (match web: fontSize 12pt)
+        // Ensure text uses full header width without wrapping or duplication
+        slide.addText('Technical List', {
+            x: legendXInch,
+            y: legendYInch,
+            w: legendWidthInch,
+            h: headerHeightInch,
+            fontSize: 12,
+            bold: true,
+            color: 'FFFFFF',
+            align: 'center',
+            valign: 'middle',
+            fontFace: 'Samsung Sharp Sans' // Match web font
+        });
+
+        // Render items (match web: currentY starts at 42px from top of legend)
+        let currentYInch = legendYInch + (42 * PX_TO_INCH * transform.scale);
+        const itemHeightInch = (21 * PX_TO_INCH) * transform.scale;
+
+        // Render Components first
+        Object.keys(components).forEach(compName => {
+            const node = Object.values(nodes).find(n => (n.model === compName || n.type === compName));
+            const color = node ? (node.color || '#94a3b8') : '#94a3b8';
+            const colorHex = color.replace('#', '').toUpperCase();
+
+            // Component square - color indicator in Technical List
+            // Web: x = 20.3, y = currentY + 4.5, width = 12, height = 12
+            // Text center: currentY + itemHeight/2 = currentY + 10.5
+            // Rect center: currentY + 4.5 + 6 = currentY + 10.5 (aligned with text)
+            const squareSizeInch = (12 * PX_TO_INCH) * transform.scale; // Match web: 12x12
+            const squareXInch = legendXInch + (20.3 * PX_TO_INCH * transform.scale);
+            const squareYInch = currentYInch + (4.5 * PX_TO_INCH * transform.scale); // Match web: currentY + 4.5
+
+            slide.addShape(pres.ShapeType.rect, {
+                x: squareXInch,
+                y: squareYInch,
+                w: squareSizeInch,
+                h: squareSizeInch,
+                fill: { color: colorHex },
+                // Remove outline/border
+                line: { color: colorHex, width: 0 }
+            });
+
+            // Component label (match web: fontSize 12pt, x starts at 42px)
+            // Text width: legendWidth(160) - textStartX(42) = 118px available for text
+            const textStartXInch = legendXInch + (42 * PX_TO_INCH * transform.scale);
+            const textWidthInch = legendWidthInch - (42 * PX_TO_INCH * transform.scale); // Match web: legendWidth - 42
+            slide.addText(compName, {
+                x: textStartXInch,
+                y: currentYInch,
+                w: textWidthInch,
+                h: itemHeightInch,
+                fontSize: 12,
+                color: '000000',
+                align: 'left',
+                valign: 'middle',
+                fontFace: 'Samsung Sharp Sans' // Match web font
+            });
+
+            currentYInch += itemHeightInch;
+        });
+
+        // Render Cables
+        Object.keys(cables).forEach(cableType => {
+            const conn = Object.values(connections).find(c => c.type === cableType);
+            const color = conn ? (conn.color || 'black') : 'black';
+            const colorHex = color.replace('#', '').toUpperCase();
+
+            // Cable line - horizontal line indicator in Technical List
+            // Web: lineY = currentY + itemHeight / 2 = currentY + 10.5
+            // Web: points = [14, lineY, 35, lineY], strokeWidth = 1.4
+            // Make line thicker: minimum 1pt (1/72 inch)
+            const itemHeightPx = 21; // Match web: itemHeight = 21
+            const lineYInch = currentYInch + ((itemHeightPx / 2) * PX_TO_INCH * transform.scale); // Match web: currentY + 10.5
+            const lineStartXInch = legendXInch + (14 * PX_TO_INCH * transform.scale);
+            const lineEndXInch = legendXInch + (35 * PX_TO_INCH * transform.scale);
+            // Set line thickness to 2pt as requested
+            // 1pt = 1/72 inch, so 2pt = 2/72 inch
+            const lineWidth = 2 / 72; // 2pt thickness
+
+            slide.addShape(pres.ShapeType.line, {
+                x: lineStartXInch,
+                y: lineYInch,
+                w: lineEndXInch - lineStartXInch,
+                h: 0,
+                line: {
+                    color: colorHex.toUpperCase(),
+                    width: lineWidth,
+                    dashType: cableType.includes('Wireless') ? 'dash' : 'solid'
+                }
+            });
+
+            // Cable label (match web: fontSize 12pt, x starts at 42px)
+            // Text width: legendWidth(160) - textStartX(42) = 118px available for text
+            const textStartXInch = legendXInch + (42 * PX_TO_INCH * transform.scale);
+            const textWidthInch = legendWidthInch - (42 * PX_TO_INCH * transform.scale); // Match web: legendWidth - 42
+            slide.addText(cableType, {
+                x: textStartXInch,
+                y: currentYInch,
+                w: textWidthInch,
+                h: itemHeightInch,
+                fontSize: 12,
+                color: '000000',
+                align: 'left',
+                valign: 'middle',
+                fontFace: 'Samsung Sharp Sans' // Match web font
+            });
+
+            currentYInch += itemHeightInch;
+        });
+        } catch (error) {
+            console.error('Error rendering Technical List:', error);
+            // Don't throw - allow slide to continue without technical list
+        }
+    }
+
+    addHardwareListSlides(pres) {
+        // Get hardware list data from HardwareListManager (same logic as renderTable)
+        const data = this.dataStore.getState();
+        const nodes = data.nodes || {};
+        const connections = data.connections || {};
+        const metadata = data.meta.hardwareListMetadata || {};
+        const sidebarHardwareList = data.meta.hardwareList || [];
+
+        // Filter to only visible nodes (within canvas bounds)
+        const VIRTUAL_WIDTH = 960.26;
+        const VIRTUAL_HEIGHT = 540;
+        const visibleNodes = {};
+        Object.entries(nodes).forEach(([id, node]) => {
+            let isVisible = false;
+            if (node.logicalPos) {
+                const col = node.logicalPos.col || 0;
+                const row = node.logicalPos.row || 0;
+                const nodeX = col * 24;
+                const nodeY = row * 24;
+                const nodeW = 70;
+                const nodeH = 42;
+                isVisible = nodeX < VIRTUAL_WIDTH && nodeY < VIRTUAL_HEIGHT && 
+                           (nodeX + nodeW) > 0 && (nodeY + nodeH) > 0;
+            } else if (node.physicalPos) {
+                const nodeX = node.physicalPos.x || 0;
+                const nodeY = node.physicalPos.y || 0;
+                const nodeW = 16.8;
+                const nodeH = 16.8;
+                isVisible = nodeX < VIRTUAL_WIDTH && nodeY < VIRTUAL_HEIGHT && 
+                           (nodeX + nodeW) > 0 && (nodeY + nodeH) > 0;
+            }
+            if (isVisible) {
+                visibleNodes[id] = node;
+            }
+        });
+
+        // Filter connections to visible nodes
+        const visibleNodeIds = new Set(Object.keys(visibleNodes));
+        const visibleConnections = {};
+        Object.entries(connections).forEach(([id, conn]) => {
+            if (visibleNodeIds.has(conn.source) && visibleNodeIds.has(conn.target)) {
+                visibleConnections[id] = conn;
+            }
+        });
+
+        // Count hardware items (same logic as HardwareListManager.renderTable)
+        const hardwareMap = new Map();
+        Object.values(visibleNodes).forEach(node => {
+            const key = `${node.type}|${node.model || ''}`;
+            if (hardwareMap.has(key)) {
+                hardwareMap.get(key).count += 1;
+            } else {
+                hardwareMap.set(key, {
+                    type: node.type,
+                    model: node.model || '',
+                    category: node.category || 'Device',
+                    count: 1
+                });
+            }
+        });
+
+        Object.values(visibleConnections).forEach(conn => {
+            const cableType = conn.type || '';
+            if (cableType.toLowerCase() === 'wireless') return;
+            const key = `Cable|${cableType || conn.model || ''}`;
+            if (hardwareMap.has(key)) {
+                hardwareMap.get(key).count += 1;
+            } else {
+                hardwareMap.set(key, {
+                    type: cableType || 'Cable',
+                    model: conn.model || '',
+                    category: 'Cable',
+                    count: 1
+                });
+            }
+        });
+
+        // Sort by sidebar order
+        const sidebarOrderMap = new Map();
+        sidebarHardwareList.forEach((item, index) => {
+            const key = `${item.type}|${item.model || ''}`;
+            sidebarOrderMap.set(key, index);
+        });
+
+        const hardwareList = Array.from(hardwareMap.values()).sort((a, b) => {
+            const keyA = `${a.type}|${a.model || ''}`;
+            const keyB = `${b.type}|${b.model || ''}`;
+            const orderA = sidebarOrderMap.has(keyA) ? sidebarOrderMap.get(keyA) : Infinity;
+            const orderB = sidebarOrderMap.has(keyB) ? sidebarOrderMap.get(keyB) : Infinity;
+            if (orderA !== Infinity && orderB !== Infinity) return orderA - orderB;
+            if (orderA !== Infinity) return -1;
+            if (orderB !== Infinity) return 1;
+            if (a.category !== b.category) return a.category === 'Device' ? -1 : 1;
+            return a.type.localeCompare(b.type);
+        });
+
+        // Separate into I M FINE and Local lists
+        const imfineList = [];
+        const localList = [];
+        hardwareList.forEach(item => {
+            const itemKey = `${item.type}|${item.model}`;
+            const itemMetadata = metadata[itemKey] || {};
+            if (itemMetadata.isImfine === true) {
+                imfineList.push(item);
+            } else {
+                localList.push(item);
+            }
+        });
+
+        // Create slides with table styling matching web version
+        this.addTableSlide(pres, 'Hardware List - Local', localList, metadata);
+        this.addTableSlide(pres, 'Hardware List - I M Fine', imfineList, metadata);
+    }
+
+    addTableSlide(pres, title, hardwareList, metadata = {}) {
         const slide = pres.addSlide();
 
         // Title
         slide.addText(title, {
-            x: 0.5, y: 0.3, w: '90%', h: 0.5,
-            fontSize: 18, bold: true, color: '363636'
+            x: 0.4, y: 0.4, w: '90%', h: 0.5,
+            fontSize: 36, bold: true, color: '363636', fontFace: 'Samsung Sharp Sans'
         });
 
-        // Table Data
-        // Headers
+        // Determine if this is I M FINE or Local table
+        const isImfine = title.includes('I M Fine');
+        const categoryText = isImfine ? 'I M FINE' : 'Local';
+        
+        // First header row: Black background with white text showing "Local" or "I M FINE"
+        const firstHeaderOpts = {
+            bold: true,
+            fill: '000000', // Black background
+            color: 'FFFFFF', // White text
+            align: 'center',
+            valign: 'middle',
+            border: { pt: 1, color: '000000' },
+            colspan: 5 // Span all 5 columns
+        };
+
+        // Second header row: Colored background with column names
         const headerOpts = {
             bold: true,
-            fill: 'F1F5F9',
-            color: '1E293B',
+            fill: isImfine ? 'FEE2E2' : 'E0F2FE', // red-100 for I M FINE, sky-50 for Local
+            color: '000000',
             align: 'center',
             valign: 'middle',
             border: { pt: 1, color: 'CBD5E1' }
         };
 
         const rows = [
+            [
+                { text: categoryText, options: { ...firstHeaderOpts, colspan: 5 } }
+            ],
             [
                 { text: 'Hardware', options: headerOpts },
                 { text: 'Model', options: headerOpts },
@@ -234,31 +1045,61 @@ export class PPTExportManager {
             ]
         ];
 
-        // Content
-        const cellOpts = {
-            color: '334155',
-            align: 'center',
-            valign: 'middle',
-            border: { pt: 1, color: 'E2E8F0' }
-        };
-
+        // Process hardware list with rowspan for R&R column
         if (hardwareList && hardwareList.length > 0) {
-            hardwareList.forEach(item => {
-                rows.push([
+            hardwareList.forEach((item, index) => {
+                const itemKey = `${item.type}|${item.model}`;
+                const itemMetadata = metadata[itemKey] || {};
+                const modelText = item.model || '';
+                const hasTBU = modelText.toUpperCase().includes('TBU');
+                const modelDisplay = modelText || '-';
+                
+                // Determine rowspan for R&R column (first row only)
+                const isFirstRow = index === 0;
+                const rowspan = isFirstRow ? hardwareList.length : 0;
+                
+                // Row background color: alternate white and colored (red-50 for I M FINE, sky-50 for Local)
+                const isImfine = title.includes('I M Fine');
+                const rowColor = index % 2 === 0 ? 'FFFFFF' : (isImfine ? 'FEF2F2' : 'F0F9FF'); // red-50 or sky-50
+                
+                const cellOpts = {
+                    color: '334155',
+                    align: 'center',
+                    valign: 'middle',
+                    border: { pt: 1, color: 'E2E8F0' },
+                    fill: rowColor
+                };
+
+                const modelCellOpts = {
+                    ...cellOpts,
+                    color: hasTBU ? 'DC2626' : '334155' // red-600 for TBU
+                };
+
+                const rrCellOpts = {
+                    ...cellOpts,
+                    fill: 'F3F4F6', // gray-100
+                    rowspan: rowspan
+                };
+
+                const row = [
                     { text: item.type || '', options: cellOpts },
-                    { text: item.model || '', options: cellOpts },
-                    { text: '1', options: cellOpts }, // Default EA
-                    { text: '', options: cellOpts },  // Default R&R
-                    { text: '', options: cellOpts }   // Default Remark
-                ]);
+                    { text: modelDisplay, options: modelCellOpts },
+                    { text: String(item.count || 1), options: cellOpts },
+                    isFirstRow ? { text: isImfine ? 'I M FINE' : 'Local', options: rrCellOpts } : null,
+                    { text: itemMetadata.remark || '', options: cellOpts }
+                ].filter(cell => cell !== null); // Remove null cells (non-first rows don't have R&R cell)
+
+                rows.push(row);
             });
         } else {
+            const cellOpts = {
+                color: '334155',
+                align: 'center',
+                valign: 'middle',
+                border: { pt: 1, color: 'E2E8F0' }
+            };
             rows.push([
-                { text: 'No hardware defined', options: { ...cellOpts, colspan: 5 } },
-                { text: '', options: cellOpts },
-                { text: '', options: cellOpts },
-                { text: '', options: cellOpts },
-                { text: '', options: cellOpts }
+                { text: 'No hardware defined', options: { ...cellOpts, colspan: 5 } }
             ]);
         }
 
