@@ -66,9 +66,14 @@ export class LegendManager {
             }
         });
 
-        // Collect used cable types from connections
+        // Collect used cable types from connections (use configurationConnections primarily)
         const usedCables = new Map();
-        Object.values(data.connections || {}).forEach(conn => {
+        const allConnections = {
+            ...(data.configurationConnections || {}),
+            ...(data.installationConnections || {}),
+            ...(data.networkConnections || {})
+        };
+        Object.values(allConnections).forEach(conn => {
             if (conn.type && !usedCables.has(conn.type)) {
                 const hardware = hardwareMap.get(conn.type);
                 usedCables.set(conn.type, {

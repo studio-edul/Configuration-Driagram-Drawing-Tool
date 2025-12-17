@@ -26,49 +26,70 @@ export class PPTExportManager {
         this.dataStore = dataStore;
     }
 
-    exportToPPT(nodes, connections, hardwareList) {
+    exportToPPT(nodes, connectionsData, hardwareList) {
         try {
             const data = this.dataStore.getState();
             
-            // Filter nodes to only include those visible on canvas (within canvas bounds)
             // Canvas dimensions: VIRTUAL_WIDTH = 960.26, VIRTUAL_HEIGHT = 540
             const VIRTUAL_WIDTH = 960.26;
             const VIRTUAL_HEIGHT = 540;
-            const visibleNodes = {};
+            
+            // Filter nodes and connections separately for each mode
+            // IMPORTANT: Each mode uses its own node set to ensure connections are calculated correctly
+            
+            // Configuration mode: use ONLY nodes with logicalPos (ignore physicalPos even if present)
+            const configNodes = {};
             Object.entries(nodes).forEach(([id, node]) => {
-                let isVisible = false;
-                if (node.logicalPos) {
-                    // Configuration mode: check if within grid bounds
+                // Only include nodes that have logicalPos (Configuration mode nodes)
+                if (node.logicalPos && (node.logicalPos.col !== undefined || node.logicalPos.row !== undefined)) {
                     const col = node.logicalPos.col || 0;
                     const row = node.logicalPos.row || 0;
                     const nodeX = col * 24;
                     const nodeY = row * 24;
-                    const nodeW = 70;
+                    const nodeW = 75; // Updated block width
                     const nodeH = 42;
-                    // Check if node intersects with canvas area
-                    isVisible = nodeX < VIRTUAL_WIDTH && nodeY < VIRTUAL_HEIGHT && 
-                               (nodeX + nodeW) > 0 && (nodeY + nodeH) > 0;
-                } else if (node.physicalPos) {
-                    // Installation/Network mode: check if within canvas bounds
-                    const nodeX = node.physicalPos.x || 0;
-                    const nodeY = node.physicalPos.y || 0;
-                    const nodeW = 16.8;
-                    const nodeH = 16.8;
-                    // Check if node intersects with canvas area
-                    isVisible = nodeX < VIRTUAL_WIDTH && nodeY < VIRTUAL_HEIGHT && 
-                               (nodeX + nodeW) > 0 && (nodeY + nodeH) > 0;
+                    const isVisible = nodeX < VIRTUAL_WIDTH && nodeY < VIRTUAL_HEIGHT && 
+                                   (nodeX + nodeW) > 0 && (nodeY + nodeH) > 0;
+                    if (isVisible) {
+                        configNodes[id] = node;
+                    }
                 }
-                if (isVisible) {
-                    visibleNodes[id] = node;
+            });
+            const configNodeIds = new Set(Object.keys(configNodes));
+            // Use configurationConnections directly (already filtered by mode)
+            const configConnections = {};
+            const configurationConnections = connectionsData.configurationConnections || {};
+            Object.entries(configurationConnections).forEach(([id, conn]) => {
+                // Only include connections where both source and target are in configNodes set
+                if (configNodeIds.has(conn.source) && configNodeIds.has(conn.target)) {
+                    configConnections[id] = conn;
                 }
             });
 
-            // Filter connections to only include those connected to visible nodes
-            const visibleNodeIds = new Set(Object.keys(visibleNodes));
-            const visibleConnections = {};
-            Object.entries(connections).forEach(([id, conn]) => {
-                if (visibleNodeIds.has(conn.source) && visibleNodeIds.has(conn.target)) {
-                    visibleConnections[id] = conn;
+            // Installation mode: use ONLY nodes with physicalPos (ignore logicalPos even if present)
+            const installNodes = {};
+            Object.entries(nodes).forEach(([id, node]) => {
+                // Only include nodes that have physicalPos (Installation mode nodes)
+                if (node.physicalPos && (node.physicalPos.x !== undefined || node.physicalPos.y !== undefined)) {
+                    const nodeX = node.physicalPos.x ?? 0;
+                    const nodeY = node.physicalPos.y ?? 0;
+                    const nodeW = 16.8;
+                    const nodeH = 16.8;
+                    const isVisible = nodeX < VIRTUAL_WIDTH && nodeY < VIRTUAL_HEIGHT && 
+                                   (nodeX + nodeW) > 0 && (nodeY + nodeH) > 0;
+                    if (isVisible) {
+                        installNodes[id] = node;
+                    }
+                }
+            });
+            const installNodeIds = new Set(Object.keys(installNodes));
+            // Use installationConnections directly (already filtered by mode)
+            const installConnections = {};
+            const installationConnections = connectionsData.installationConnections || {};
+            Object.entries(installationConnections).forEach(([id, conn]) => {
+                // Only include connections where both source and target are in installNodes set
+                if (installNodeIds.has(conn.source) && installNodeIds.has(conn.target)) {
+                    installConnections[id] = conn;
                 }
             });
             
@@ -90,14 +111,14 @@ export class PPTExportManager {
             pres.layout = 'LAYOUT_16x9';
 
             // --- Slide 1: Configuration ---
-            this.addDiagramSlide(pres, 'System Configuration', visibleNodes, visibleConnections, 'CONFIGURATION');
+            this.addDiagramSlide(pres, 'System Configuration', configNodes, configConnections, 'CONFIGURATION');
 
             // --- Slide 2: Installation ---
-            this.addDiagramSlide(pres, 'Cable Guide', visibleNodes, visibleConnections, 'INSTALLATION');
+            this.addDiagramSlide(pres, 'Cable Guide', installNodes, installConnections, 'INSTALLATION');
 
             // --- Slide 3: Network ---
             const networkNodes = data.networkNodes || {};
-            const networkConnections = data.networkConnections || {};
+            const networkConnections = connectionsData.networkConnections || {};
             // Filter network nodes/connections too
             const visibleNetworkNodes = {};
             const visibleNetworkNodeIds = new Set();
@@ -192,7 +213,7 @@ export class PPTExportManager {
         if ((mode === 'INSTALLATION' || mode === 'NETWORK') && this.dataStore.getState().meta.floorPlanImage) {
             const floorPlanImage = this.dataStore.getState().meta.floorPlanImage;
             
-            // Match web layout calculation
+            // Match web layout calculation (Visualizer.js)
             const VIRTUAL_WIDTH_PX = 960.26;
             const VIRTUAL_HEIGHT_PX = 540;
             const titleHeight = 90; // Adjusted top margin
@@ -323,14 +344,28 @@ export class PPTExportManager {
         // Store connection shape objects for grouping using addGroup
         const connectionShapeGroups = {}; // Map<connId, Array<shapeObjects>>
         
-        if (connections && Object.keys(connections).length > 0) {
+        // IMPORTANT: Only render connections that belong to the passed nodes set
+        // Filter connections to only include those between nodes in the passed nodes object
+        const nodeIds = new Set(Object.keys(nodes));
+        const filteredConnections = {};
+        if (connections) {
+            Object.entries(connections).forEach(([connId, conn]) => {
+                // Only include connections where both source and target are in the nodes set
+                if (nodeIds.has(conn.source) && nodeIds.has(conn.target)) {
+                    filteredConnections[connId] = conn;
+                }
+            });
+        }
+        
+        if (Object.keys(filteredConnections).length > 0) {
             if (window.app && window.app.visualizer) {
                 try {
-                    const result = window.app.visualizer.calculateConnectionLayout(connections, nodes, mode);
+                    // Use filtered connections and filtered nodes for layout calculation
+                    const result = window.app.visualizer.calculateConnectionLayout(filteredConnections, nodes, mode);
                     const layout = result.layout || result;
                     
                     // Render each connection using the calculated layout
-                    Object.values(connections).forEach(conn => {
+                    Object.values(filteredConnections).forEach(conn => {
                         const points = layout[conn.id];
                         if (points && Array.isArray(points) && points.length >= 4) {
                             const shapeObjects = this.renderConnectionFromPoints(pres, slide, conn, points, transform);
@@ -342,7 +377,7 @@ export class PPTExportManager {
                 } catch (error) {
                     console.warn('Failed to calculate connection layout, falling back to individual calculation:', error);
                     // Fallback: render connections individually
-                    Object.values(connections).forEach(conn => {
+                    Object.values(filteredConnections).forEach(conn => {
                         const shapeObjects = this.renderConnection(pres, slide, conn, nodes, mode, transform);
                         if (shapeObjects && shapeObjects.length > 0) {
                             connectionShapeGroups[conn.id] = shapeObjects;
@@ -370,23 +405,16 @@ export class PPTExportManager {
         Object.values(nodes).forEach(node => {
             let x, y, w, h;
             if (mode === 'INSTALLATION' || mode === 'NETWORK') {
-                // Match web: use physicalPos with default 0 if missing
-                // If physicalPos is missing, convert from logicalPos (for Configuration mode nodes)
-                let physicalX, physicalY;
-                if (node.physicalPos) {
-                    physicalX = node.physicalPos.x ?? 0;
-                    physicalY = node.physicalPos.y ?? 0;
-                } else if (node.logicalPos) {
-                    // Convert logicalPos to physicalPos: grid coordinates (col, row) to pixels (x, y)
-                    // Grid spacing is 24px, same as web
-                    const col = node.logicalPos.col || 0;
-                    const row = node.logicalPos.row || 0;
-                    physicalX = col * 24;
-                    physicalY = row * 24;
-                } else {
-                    console.warn(`Node ${node.id} missing both physicalPos and logicalPos in ${mode} mode, skipping`);
-                    return; // Skip nodes without both physicalPos and logicalPos
+                // Match web: use physicalPos only (do not convert from logicalPos)
+                // Each mode maintains its own position independently after initial creation
+                if (!node.physicalPos) {
+                    // Skip nodes without physicalPos in Installation/Network mode
+                    // Do not convert from logicalPos to maintain mode independence
+                    console.warn(`Node ${node.id} missing physicalPos in ${mode} mode, skipping`);
+                    return;
                 }
+                const physicalX = node.physicalPos.x ?? 0;
+                const physicalY = node.physicalPos.y ?? 0;
                 x = physicalX * PX_TO_INCH;
                 y = physicalY * PX_TO_INCH;
                 w = 16.8 * PX_TO_INCH; // Match web: 16.8x16.8
@@ -892,7 +920,12 @@ export class PPTExportManager {
         // Get hardware list data from HardwareListManager (same logic as renderTable)
         const data = this.dataStore.getState();
         const nodes = data.nodes || {};
-        const connections = data.connections || {};
+        // Combine all connections for hardware list (use configurationConnections primarily)
+        const connections = {
+            ...(data.configurationConnections || {}),
+            ...(data.installationConnections || {}),
+            ...(data.networkConnections || {})
+        };
         const metadata = data.meta.hardwareListMetadata || {};
         const sidebarHardwareList = data.meta.hardwareList || [];
 

@@ -326,7 +326,16 @@ export class Visualizer {
 
         // Select data based on mode
         const targetNodes = mode === 'NETWORK' ? data.networkNodes : data.nodes;
-        const targetConnections = mode === 'NETWORK' ? data.networkConnections : data.connections;
+        let targetConnections;
+        if (mode === 'NETWORK') {
+            targetConnections = data.networkConnections || {};
+        } else if (mode === 'CONFIGURATION') {
+            targetConnections = data.configurationConnections || {};
+        } else if (mode === 'INSTALLATION') {
+            targetConnections = data.installationConnections || {};
+        } else {
+            targetConnections = {};
+        }
 
         // Clean up invalid selections (nodes that no longer exist)
         const existingNodeIds = new Set(Object.keys(targetNodes));
@@ -370,7 +379,7 @@ export class Visualizer {
 
             if (imgWidth && imgHeight) {
                 const titleHeight = 90; // Adjusted top margin
-                const legendWidth = 300; // Adjusted right margin
+                const legendWidth = 160; // Match PPT value
                 const padding = 30; // Adjusted padding
 
                 const availableWidth = this.width - legendWidth - (padding * 2);
@@ -428,7 +437,16 @@ export class Visualizer {
         if (mode !== 'CONFIGURATION' && mode !== 'INSTALLATION' && mode !== 'NETWORK') return;
 
         const targetNodes = mode === 'NETWORK' ? data.networkNodes : data.nodes;
-        const targetConnections = mode === 'NETWORK' ? data.networkConnections : data.connections;
+        let targetConnections;
+        if (mode === 'NETWORK') {
+            targetConnections = data.networkConnections || {};
+        } else if (mode === 'CONFIGURATION') {
+            targetConnections = data.configurationConnections || {};
+        } else if (mode === 'INSTALLATION') {
+            targetConnections = data.installationConnections || {};
+        } else {
+            targetConnections = {};
+        }
 
         // Calculate items first to determine height
         const components = {};
@@ -1324,18 +1342,9 @@ export class Visualizer {
     }
 
     getNodeRect(node, mode) {
-        // Try to get live position from Konva group first (for smooth dragging)
-        const group = this.nodeGroups[node.id];
-        if (group) {
-            return {
-                x: group.x(),
-                y: group.y(),
-                width: mode === 'INSTALLATION' ? 16.8 : 75, // Changed to 75
-                height: mode === 'INSTALLATION' ? 16.8 : 42  // Scaled 0.7x
-            };
-        }
-
-        if (mode === 'INSTALLATION') {
+        // Always use node data based on mode, not Konva group position
+        // (Konva group position might be from a different mode)
+        if (mode === 'INSTALLATION' || mode === 'NETWORK') {
             return {
                 x: node.physicalPos?.x || 0,
                 y: node.physicalPos?.y || 0,
@@ -1343,6 +1352,7 @@ export class Visualizer {
                 height: 16.8
             };
         } else {
+            // CONFIGURATION mode: use logicalPos
             return {
                 x: (node.logicalPos?.col || 0) * 24,
                 y: (node.logicalPos?.row || 0) * 24,

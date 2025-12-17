@@ -16,9 +16,14 @@ export class HardwareListManager {
     }
 
     init() {
-        // Subscribe to mode changes
+        // Subscribe to data changes
         this.dataStore.subscribe((data) => {
-            this.handleModeChange(data.meta.mode);
+            const mode = data.meta.mode;
+            this.handleModeChange(mode);
+            // If in HARDWARE_LIST mode, also update the table when data changes
+            if (mode === 'HARDWARE_LIST') {
+                this.renderTable();
+            }
         });
 
         // Bind copy buttons
@@ -101,7 +106,8 @@ export class HardwareListManager {
     renderTable() {
         const data = this.dataStore.getState();
         const nodes = data.nodes || {};
-        const connections = data.connections || {};
+        // Use only configurationConnections for hardware list
+        const connections = data.configurationConnections || {};
         const metadata = data.meta.hardwareListMetadata || {};
         const sidebarHardwareList = data.meta.hardwareList || []; // Get sidebar hardware list order
 

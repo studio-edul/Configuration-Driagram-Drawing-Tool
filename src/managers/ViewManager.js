@@ -140,7 +140,15 @@ export class ViewManager {
         }
 
         const data = this.dataStore.getState();
-        const success = window.app.pptExportManager.exportToPPT(data.nodes, data.connections, data.meta.hardwareList);
+        const success = window.app.pptExportManager.exportToPPT(
+            data.nodes, 
+            {
+                configurationConnections: data.configurationConnections || {},
+                installationConnections: data.installationConnections || {},
+                networkConnections: data.networkConnections || {}
+            },
+            data.meta.hardwareList
+        );
 
         if (success) {
             // Visual feedback

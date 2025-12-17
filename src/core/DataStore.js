@@ -9,7 +9,8 @@ export class DataStore {
                 projectName: 'The First Look 2026' // Project name for hardware list tables
             },
             nodes: {},
-            connections: {},
+            configurationConnections: {}, // Connections created in CONFIGURATION mode
+            installationConnections: {}, // Connections created in INSTALLATION mode
             networkNodes: {},
             networkConnections: {},
             requests: {}
@@ -79,35 +80,93 @@ export class DataStore {
     addConnection(connection) {
         const mode = this.projectData.meta.mode;
         if (mode === 'NETWORK') {
+            if (!this.projectData.networkConnections) {
+                this.projectData.networkConnections = {};
+            }
             this.projectData.networkConnections[connection.id] = connection;
-        } else {
-            this.projectData.connections[connection.id] = connection;
+        } else if (mode === 'CONFIGURATION') {
+            // Add to configurationConnections
+            if (!this.projectData.configurationConnections) {
+                this.projectData.configurationConnections = {};
+            }
+            this.projectData.configurationConnections[connection.id] = connection;
+            // Also add to installationConnections so it appears in Installation mode
+            if (!this.projectData.installationConnections) {
+                this.projectData.installationConnections = {};
+            }
+            // Create a copy for installation mode (same connection between same nodes)
+            this.projectData.installationConnections[connection.id] = { ...connection };
+        } else if (mode === 'INSTALLATION') {
+            // Add to installationConnections
+            if (!this.projectData.installationConnections) {
+                this.projectData.installationConnections = {};
+            }
+            this.projectData.installationConnections[connection.id] = connection;
+            // Also add to configurationConnections so it appears in Configuration mode
+            if (!this.projectData.configurationConnections) {
+                this.projectData.configurationConnections = {};
+            }
+            // Create a copy for configuration mode (same connection between same nodes)
+            this.projectData.configurationConnections[connection.id] = { ...connection };
         }
         this.notify();
     }
 
     updateConnection(connectionId, updates) {
-        if (this.projectData.connections[connectionId]) {
-            this.projectData.connections[connectionId] = { ...this.projectData.connections[connectionId], ...updates };
-        } else if (this.projectData.networkConnections[connectionId]) {
+        if (this.projectData.configurationConnections && this.projectData.configurationConnections[connectionId]) {
+            this.projectData.configurationConnections[connectionId] = { ...this.projectData.configurationConnections[connectionId], ...updates };
+        } else if (this.projectData.installationConnections && this.projectData.installationConnections[connectionId]) {
+            this.projectData.installationConnections[connectionId] = { ...this.projectData.installationConnections[connectionId], ...updates };
+        } else if (this.projectData.networkConnections && this.projectData.networkConnections[connectionId]) {
             this.projectData.networkConnections[connectionId] = { ...this.projectData.networkConnections[connectionId], ...updates };
         }
         this.notify();
     }
 
     removeConnection(connectionId) {
-        if (this.projectData.connections[connectionId]) {
-            delete this.projectData.connections[connectionId];
+        if (this.projectData.configurationConnections && this.projectData.configurationConnections[connectionId]) {
+            delete this.projectData.configurationConnections[connectionId];
             this.notify();
-        } else if (this.projectData.networkConnections[connectionId]) {
+        } else if (this.projectData.installationConnections && this.projectData.installationConnections[connectionId]) {
+            delete this.projectData.installationConnections[connectionId];
+            this.notify();
+        } else if (this.projectData.networkConnections && this.projectData.networkConnections[connectionId]) {
             delete this.projectData.networkConnections[connectionId];
             this.notify();
         }
     }
 
     removeConnectionsForNode(nodeId, type = 'STANDARD') {
-        const connections = type === 'NETWORK' ? this.projectData.networkConnections : this.projectData.connections;
         let changed = false;
+        let connections;
+        
+        if (type === 'NETWORK') {
+            connections = this.projectData.networkConnections || {};
+        } else {
+            // Check both configuration and installation connections
+            const configConnections = this.projectData.configurationConnections || {};
+            const installConnections = this.projectData.installationConnections || {};
+            
+            Object.keys(configConnections).forEach(connId => {
+                const conn = configConnections[connId];
+                if (conn.source === nodeId || conn.target === nodeId) {
+                    delete configConnections[connId];
+                    changed = true;
+                }
+            });
+            
+            Object.keys(installConnections).forEach(connId => {
+                const conn = installConnections[connId];
+                if (conn.source === nodeId || conn.target === nodeId) {
+                    delete installConnections[connId];
+                    changed = true;
+                }
+            });
+            
+            if (changed) this.notify();
+            return;
+        }
+        
         Object.keys(connections).forEach(connId => {
             const conn = connections[connId];
             if (conn.source === nodeId || conn.target === nodeId) {
