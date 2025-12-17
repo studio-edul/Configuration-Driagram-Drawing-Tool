@@ -85,38 +85,131 @@ export class HardwareRegistryManager {
 
     }
 
+    /**
+     * Convert hex color to HSL
+     * @param {string} hex - Hex color string (e.g., '#22c55e')
+     * @returns {Object} - {h, s, l} values (h: 0-360, s: 0-100, l: 0-100)
+     */
+    hexToHsl(hex) {
+        const r = parseInt(hex.slice(1, 3), 16) / 255;
+        const g = parseInt(hex.slice(3, 5), 16) / 255;
+        const b = parseInt(hex.slice(5, 7), 16) / 255;
+
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        let h, s, l = (max + min) / 2;
+
+        if (max === min) {
+            h = s = 0; // achromatic
+        } else {
+            const d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            switch (max) {
+                case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+                case g: h = ((b - r) / d + 2) / 6; break;
+                case b: h = ((r - g) / d + 4) / 6; break;
+            }
+        }
+
+        return {
+            h: Math.round(h * 360),
+            s: Math.round(s * 100),
+            l: Math.round(l * 100)
+        };
+    }
+
+    /**
+     * Calculate color difference between two colors (based on hue difference)
+     * @param {string} color1 - Hex color string
+     * @param {string} color2 - Hex color string
+     * @returns {number} - Color difference (0-180, higher is more different)
+     */
+    getColorDifference(color1, color2) {
+        const hsl1 = this.hexToHsl(color1);
+        const hsl2 = this.hexToHsl(color2);
+        
+        // Calculate hue difference (circular distance)
+        let hueDiff = Math.abs(hsl1.h - hsl2.h);
+        if (hueDiff > 180) {
+            hueDiff = 360 - hueDiff;
+        }
+        
+        // Also consider saturation difference (weighted less)
+        const satDiff = Math.abs(hsl1.s - hsl2.s);
+        
+        // Combined difference: hue is more important, but saturation also matters
+        return hueDiff + (satDiff * 0.3);
+    }
+
     getUnusedColor() {
         const currentList = this.dataStore.getState().meta.hardwareList || [];
-        const usedColors = new Set(currentList.map(item => item.color).filter(Boolean));
+        const usedColors = Array.from(new Set(currentList.map(item => item.color).filter(Boolean)));
 
         // Exclude red colors
         const redColors = ['#ef4444', '#f87171', '#dc2626', '#fee2e2', '#fca5a5', '#991b1b', '#be123c'];
         const grayColors = ['#64748b', '#94a3b8']; // Gray colors (slate-500, slate-400)
         
-        // Separate non-gray and gray colors
-        const nonGrayColors = AVAILABLE_COLORS.filter(color => 
+        // Filter available colors: exclude red and gray colors
+        const candidateColors = AVAILABLE_COLORS.filter(color => 
             !redColors.includes(color.toLowerCase()) && !grayColors.includes(color)
         );
-        const availableGrayColors = AVAILABLE_COLORS.filter(color => 
-            !redColors.includes(color.toLowerCase()) && grayColors.includes(color)
-        );
 
-        // First, try to find unused non-gray color
-        for (const color of nonGrayColors) {
-            if (!usedColors.has(color)) {
-                return color;
+        // Filter out already used colors
+        const unusedColors = candidateColors.filter(color => !usedColors.includes(color));
+
+        // If no unused colors, return first candidate (fallback)
+        if (unusedColors.length === 0) {
+            return candidateColors[0] || AVAILABLE_COLORS[0];
+        }
+
+        // If no colors are used yet, return first unused color with high saturation
+        if (usedColors.length === 0) {
+            // Sort by saturation (descending) and return highest
+            const sortedBySaturation = unusedColors.sort((a, b) => {
+                const hslA = this.hexToHsl(a);
+                const hslB = this.hexToHsl(b);
+                return hslB.s - hslA.s;
+            });
+            return sortedBySaturation[0];
+        }
+
+        // Score each unused color based on:
+        // 1. Saturation (higher is better, minimum threshold: 50%)
+        // 2. Minimum distance from all used colors (higher is better)
+        const MIN_SATURATION = 50; // Minimum saturation threshold
+        const scoredColors = unusedColors.map(color => {
+            const hsl = this.hexToHsl(color);
+            
+            // Skip colors with low saturation (unless all colors are low saturation)
+            if (hsl.s < MIN_SATURATION) {
+                return { color, score: -1000, saturation: hsl.s, minDistance: 0 };
+            }
+
+            // Calculate minimum distance to all used colors
+            const distances = usedColors.map(usedColor => this.getColorDifference(color, usedColor));
+            const minDistance = Math.min(...distances);
+            const avgDistance = distances.reduce((sum, d) => sum + d, 0) / distances.length;
+
+            // Score: saturation weight (40%) + min distance weight (40%) + avg distance weight (20%)
+            const score = (hsl.s * 0.4) + (minDistance * 0.4) + (avgDistance * 0.2);
+
+            return { color, score, saturation: hsl.s, minDistance };
+        });
+
+        // Sort by score (descending) and return best color
+        scoredColors.sort((a, b) => b.score - a.score);
+
+        // If best color has very low saturation, try to find better one
+        const bestColor = scoredColors[0];
+        if (bestColor.saturation < MIN_SATURATION && scoredColors.length > 1) {
+            // Find first color with acceptable saturation
+            const acceptableColor = scoredColors.find(c => c.saturation >= MIN_SATURATION);
+            if (acceptableColor) {
+                return acceptableColor.color;
             }
         }
 
-        // If all non-gray colors are used, try gray colors
-        for (const color of availableGrayColors) {
-            if (!usedColors.has(color)) {
-                return color;
-            }
-        }
-
-        // If all colors are used, return first available non-red color
-        return nonGrayColors[0] || AVAILABLE_COLORS[0];
+        return bestColor.color;
     }
 
     openModal(item = null) {

@@ -302,11 +302,11 @@ export class PPTExportManager {
         // Web: x = width * 0.04, y = width * 0.04
         // PPT: x = 10 * 0.04 = 0.4 inch, y = 10 * 0.04 = 0.4 inch
         // Web Font: 48px -> PPT Font: 36pt (approx 48 * 0.75)
-        // Adjust y position slightly down to account for font baseline differences
+        // Match hardware list title position (y: 0.4)
         if (title) {
             slide.addText(title, {
                 x: 0.4, 
-                y: 0.45, // Slightly lower to account for font baseline (was 0.4)
+                y: 0.4, // Match hardware list title position
                 w: 9.2, // Width for text box
                 h: 0.6, // Height for text box (36pt font needs ~0.6 inch)
                 fontSize: 36,
@@ -371,13 +371,22 @@ export class PPTExportManager {
             let x, y, w, h;
             if (mode === 'INSTALLATION' || mode === 'NETWORK') {
                 // Match web: use physicalPos with default 0 if missing
-                // Web: x = node.physicalPos?.x || 0
-                if (!node.physicalPos) {
-                    console.warn(`Node ${node.id} missing physicalPos in ${mode} mode, skipping`);
-                    return; // Skip nodes without physicalPos in INSTALLATION/NETWORK mode
+                // If physicalPos is missing, convert from logicalPos (for Configuration mode nodes)
+                let physicalX, physicalY;
+                if (node.physicalPos) {
+                    physicalX = node.physicalPos.x ?? 0;
+                    physicalY = node.physicalPos.y ?? 0;
+                } else if (node.logicalPos) {
+                    // Convert logicalPos to physicalPos: grid coordinates (col, row) to pixels (x, y)
+                    // Grid spacing is 24px, same as web
+                    const col = node.logicalPos.col || 0;
+                    const row = node.logicalPos.row || 0;
+                    physicalX = col * 24;
+                    physicalY = row * 24;
+                } else {
+                    console.warn(`Node ${node.id} missing both physicalPos and logicalPos in ${mode} mode, skipping`);
+                    return; // Skip nodes without both physicalPos and logicalPos
                 }
-                const physicalX = node.physicalPos.x ?? 0;
-                const physicalY = node.physicalPos.y ?? 0;
                 x = physicalX * PX_TO_INCH;
                 y = physicalY * PX_TO_INCH;
                 w = 16.8 * PX_TO_INCH; // Match web: 16.8x16.8
@@ -395,7 +404,7 @@ export class PPTExportManager {
                 y = (row * 24) * PX_TO_INCH;
                 
                 // Base size
-                const baseW = 70 * PX_TO_INCH;
+                const baseW = 75 * PX_TO_INCH; // Changed to 75
                 const baseH = 42 * PX_TO_INCH;
                 const minBoxWidth = baseW;
                 
@@ -403,9 +412,12 @@ export class PPTExportManager {
                 const padding = 5 * PX_TO_INCH;
                 
                 const fontSize = 15;
-                const avgCharWidth = fontSize * 0.6 / 72; // Approximate character width in inches
+                // More accurate character width calculation for SamsungOneKorean 400 font
+                // Web uses actual text measurement, so we need better approximation
+                // For bold 15pt SamsungOneKorean, average char width is approximately 0.7-0.8 of fontSize
+                const avgCharWidth = fontSize * 0.75 / 72; // Adjusted from 0.6 to 0.75 for better accuracy
                 
-                // Process type text
+                // Process type text only (Configuration mode: no model name)
                 const typeTextStr = node.type || 'Unknown';
                 const hasSpacesInType = typeTextStr.includes(' ');
                 const typeTextWidth = typeTextStr.length * avgCharWidth;
@@ -416,40 +428,32 @@ export class PPTExportManager {
                     finalW = Math.max(minBoxWidth, typeTextWidth + (padding * 2));
                 }
                 
-                // Process model text if exists
-                let modelTextStr = '';
-                let hasSpacesInModel = false;
-                let modelTextWidth = 0;
-                if (node.model && node.model.trim() !== '') {
-                    modelTextStr = node.model;
-                    hasSpacesInModel = modelTextStr.includes(' ');
-                    modelTextWidth = modelTextStr.length * avgCharWidth;
-                    
-                    // If model is wider, expand block width (but only if no spaces)
-                    if (!hasSpacesInModel && modelTextWidth + (padding * 2) > finalW) {
-                        finalW = Math.max(finalW, modelTextWidth + (padding * 2));
-                    }
-                }
-                
                 const textW = finalW - (padding * 2); // Available width for text
                 
                 // Calculate height: if text has spaces, allow wrapping; otherwise single line
+                // Match web: boxHeight = Math.max(42, typeTextHeight + 6)
                 let adjustedH = baseH;
-                if (hasSpacesInType || hasSpacesInModel) {
+                if (hasSpacesInType) {
                     // Has spaces: calculate wrapping height
-                    const fullText = typeTextStr + (modelTextStr ? `\n${modelTextStr}` : '');
-                    const textLength = fullText.length;
+                    const textLength = typeTextStr.length;
                     const estimatedTextWidth = textLength * avgCharWidth;
                     
                     if (estimatedTextWidth > textW) {
                         const charsPerLine = Math.floor(textW / avgCharWidth);
                         const linesNeeded = Math.ceil(textLength / charsPerLine);
-                        const lineHeight = fontSize * 1.2 / 72; // Line height in inches
-                        adjustedH = Math.max(baseH, linesNeeded * lineHeight);
+                        // Match web: lineHeight similar to fontSize, padding = 6px
+                        const lineHeight = fontSize / 72; // Line height in inches (1:1 ratio, no extra spacing)
+                        const textPadding = 6 * PX_TO_INCH; // Match web padding of 6px
+                        adjustedH = Math.max(baseH, linesNeeded * lineHeight + textPadding);
+                    } else {
+                        // Single line with padding
+                        const textPadding = 6 * PX_TO_INCH;
+                        adjustedH = Math.max(baseH, fontSize / 72 + textPadding);
                     }
                 } else {
-                    // No spaces: single line, but ensure minimum height
-                    adjustedH = baseH;
+                    // No spaces: single line, but ensure minimum height with padding
+                    const textPadding = 6 * PX_TO_INCH; // Match web padding of 6px
+                    adjustedH = Math.max(baseH, fontSize / 72 + textPadding);
                 }
                 
                 w = finalW;
@@ -499,17 +503,12 @@ export class PPTExportManager {
 
             // Text - only show text in CONFIGURATION mode, not in INSTALLATION or NETWORK
             if (mode === 'CONFIGURATION') {
+                // Configuration mode: only show type, not model name
                 const typeTextStr = node.type || 'Unknown';
-                const modelTextStr = node.model || '';
                 const hasSpacesInType = typeTextStr.includes(' ');
-                const hasSpacesInModel = modelTextStr.includes(' ');
-                const hasSpaces = hasSpacesInType || hasSpacesInModel;
+                const hasSpaces = hasSpacesInType;
                 
-                let text = typeTextStr;
-                if (modelTextStr) {
-                    // Configuration mode: show model below type
-                    text += `\n${modelTextStr}`;
-                }
+                let text = typeTextStr; // Only type, no model
 
                 // Font size: Web uses 15pt for Configuration mode
                 const fontSize = 15;
@@ -525,8 +524,9 @@ export class PPTExportManager {
                     x: textX, y: textY, w: textW, h: textH,
                     align: 'center', valign: 'middle',
                     fontSize: fontSize,
+                    bold: true, // Match web: fontStyle: 'bold'
                     color: 'FFFFFF', // White text to match web (fill: '#ffffff')
-                    fontFace: 'Samsung Sharp Sans', // Match web font
+                    fontFace: 'SamsungOneKorean 400', // Use Samsung One Korean for non-title text
                     wrap: hasSpaces // Only wrap if there are spaces
                 });
             }
@@ -704,7 +704,8 @@ export class PPTExportManager {
         const components = {};
         Object.values(nodes || {}).forEach(node => {
             if (!node) return;
-            const name = node.model || node.type || 'Unknown';
+            // Use type only, not model name
+            const name = node.type || 'Unknown';
             components[name] = (components[name] || 0) + 1;
         });
 
@@ -718,11 +719,13 @@ export class PPTExportManager {
         const itemCount = Object.keys(components).length + Object.keys(cables).length;
         
         // Calculate dimensions (match web version exactly)
-        // Web: legendWidth = 160px, legendHeight = (itemCount * 21) + 53
-        // Even if itemCount is 0, render empty box (minimum height = 53px for header + padding)
+        // Web: legendHeight = headerHeight + topPadding + (itemCount * 21) + bottomPadding
+        // Web: headerHeight = 20, topPadding = 10, bottomPadding = 10
         const legendWidthPx = 160;
-        const legendHeightPx = (itemCount * 21) + 53;
-        const headerHeightPx = 30; // Match web: headerHeight = 30
+        const headerHeightPx = 20; // Match web: headerHeight = 20
+        const topPadding = 10; // Match web: topPadding = 10
+        const bottomPadding = 10; // Match web: bottomPadding = 10
+        const legendHeightPx = headerHeightPx + topPadding + (itemCount * 21) + bottomPadding; // Match web calculation
         
         // Convert to inches and apply scale
         const legendWidthInch = (legendWidthPx * PX_TO_INCH) * transform.scale;
@@ -783,13 +786,15 @@ export class PPTExportManager {
             fontFace: 'Samsung Sharp Sans' // Match web font
         });
 
-        // Render items (match web: currentY starts at 42px from top of legend)
-        let currentYInch = legendYInch + (42 * PX_TO_INCH * transform.scale);
+        // Render items (match web: currentY starts at headerHeight + 10px from top of legend)
+        // headerHeight = 20px, so currentY = 30px from top of legend
+        let currentYInch = legendYInch + ((headerHeightPx + 10) * PX_TO_INCH * transform.scale);
         const itemHeightInch = (21 * PX_TO_INCH) * transform.scale;
 
         // Render Components first
         Object.keys(components).forEach(compName => {
-            const node = Object.values(nodes).find(n => (n.model === compName || n.type === compName));
+            // compName is now always type, not model
+            const node = Object.values(nodes).find(n => n.type === compName);
             const color = node ? (node.color || '#94a3b8') : '#94a3b8';
             const colorHex = color.replace('#', '').toUpperCase();
 
@@ -824,7 +829,7 @@ export class PPTExportManager {
                 color: '000000',
                 align: 'left',
                 valign: 'middle',
-                fontFace: 'Samsung Sharp Sans' // Match web font
+                fontFace: 'SamsungOneKorean 400' // Use Samsung One Korean for non-title text
             });
 
             currentYInch += itemHeightInch;
@@ -839,14 +844,13 @@ export class PPTExportManager {
             // Cable line - horizontal line indicator in Technical List
             // Web: lineY = currentY + itemHeight / 2 = currentY + 10.5
             // Web: points = [14, lineY, 35, lineY], strokeWidth = 1.4
-            // Make line thicker: minimum 1pt (1/72 inch)
+            // Use same line width as connection lines in Configuration mode
             const itemHeightPx = 21; // Match web: itemHeight = 21
             const lineYInch = currentYInch + ((itemHeightPx / 2) * PX_TO_INCH * transform.scale); // Match web: currentY + 10.5
             const lineStartXInch = legendXInch + (14 * PX_TO_INCH * transform.scale);
             const lineEndXInch = legendXInch + (35 * PX_TO_INCH * transform.scale);
-            // Set line thickness to 2pt as requested
-            // 1pt = 1/72 inch, so 2pt = 2/72 inch
-            const lineWidth = 2 / 72; // 2pt thickness
+            // Use same line width as connection lines: 1.5 * transform.scale
+            const lineWidth = 1.5 * transform.scale; // Match connection line width in Configuration mode
 
             slide.addShape(pres.ShapeType.line, {
                 x: lineStartXInch,
@@ -873,7 +877,7 @@ export class PPTExportManager {
                 color: '000000',
                 align: 'left',
                 valign: 'middle',
-                fontFace: 'Samsung Sharp Sans' // Match web font
+                fontFace: 'SamsungOneKorean 400' // Use Samsung One Korean for non-title text
             });
 
             currentYInch += itemHeightInch;
@@ -1012,24 +1016,37 @@ export class PPTExportManager {
         const categoryText = isImfine ? 'I M FINE' : 'Local';
         
         // First header row: Black background with white text showing "Local" or "I M FINE"
+        // Border array: [top, right, bottom, left] - all sides E2E8F0
         const firstHeaderOpts = {
             bold: true,
             fill: '000000', // Black background
             color: 'FFFFFF', // White text
             align: 'center',
             valign: 'middle',
-            border: { pt: 1, color: '000000' },
+            border: [
+                { pt: 1, color: 'E2E8F0' }, // Top
+                { pt: 1, color: 'E2E8F0' }, // Right
+                { pt: 1, color: 'E2E8F0' }, // Bottom - ensure this matches second header row top
+                { pt: 1, color: 'E2E8F0' }  // Left
+            ],
             colspan: 5 // Span all 5 columns
         };
 
         // Second header row: Colored background with column names
+        // Border array: [top, right, bottom, left] - all sides E2E8F0
         const headerOpts = {
             bold: true,
             fill: isImfine ? 'FEE2E2' : 'E0F2FE', // red-100 for I M FINE, sky-50 for Local
             color: '000000',
             align: 'center',
             valign: 'middle',
-            border: { pt: 1, color: 'CBD5E1' }
+            border: [
+                { pt: 1, color: 'E2E8F0' }, // Top - ensure this matches first header row bottom
+                { pt: 1, color: 'E2E8F0' }, // Right
+                { pt: 1, color: 'E2E8F0' }, // Bottom
+                { pt: 1, color: 'E2E8F0' }  // Left
+            ],
+            fontFace: 'SamsungOneKorean 400' // Use Samsung One Korean for non-title text
         };
 
         const rows = [
@@ -1067,7 +1084,8 @@ export class PPTExportManager {
                     align: 'center',
                     valign: 'middle',
                     border: { pt: 1, color: 'E2E8F0' },
-                    fill: rowColor
+                    fill: rowColor,
+                    fontFace: 'SamsungOneKorean 400' // Use Samsung One Korean for non-title text
                 };
 
                 const modelCellOpts = {
@@ -1096,7 +1114,8 @@ export class PPTExportManager {
                 color: '334155',
                 align: 'center',
                 valign: 'middle',
-                border: { pt: 1, color: 'E2E8F0' }
+                border: { pt: 1, color: 'E2E8F0' },
+                fontFace: 'SamsungOneKorean 400' // Use Samsung One Korean for non-title text
             };
             rows.push([
                 { text: 'No hardware defined', options: { ...cellOpts, colspan: 5 } }

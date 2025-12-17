@@ -187,9 +187,13 @@ export class Visualizer {
         }
 
         if (titleText) {
+            // Match PPT title position: y = 0.4 inch = 0.4 * 72 = 28.8px
+            // PPT: x = 0.4 inch = 28.8px, y = 0.4 inch = 28.8px
+            const titleX = 0.4 * 72; // 28.8px
+            const titleY = 0.4 * 72; // 28.8px (match PPT position)
             const textNode = new Konva.Text({
-                x: this.width * 0.04,
-                y: this.width * 0.04, // Equal margins based on width
+                x: titleX,
+                y: titleY, // Match PPT title position (y: 0.4 inch = 28.8px)
                 text: titleText,
                 fontSize: 36, // 36pt (PPT 기준과 동일)
                 fontStyle: 'bold',
@@ -429,7 +433,8 @@ export class Visualizer {
         // Calculate items first to determine height
         const components = {};
         Object.values(targetNodes).forEach(node => {
-            const name = node.model || node.type || 'Unknown';
+            // Use type only, not model name
+            const name = node.type || 'Unknown';
             components[name] = (components[name] || 0) + 1;
         });
 
@@ -440,9 +445,11 @@ export class Visualizer {
         });
 
         const itemCount = Object.keys(components).length + Object.keys(cables).length;
-        // Height = Header(21) + TopMargin(29.4) + Items(n*21) + BottomMargin
-        // Using 53 for slight extra breathing room (approx 0.7x of 75)
-        const legendHeight = (itemCount * 21) + 53;
+        // Height = Header(20) + TopMargin(10) + Items(n*21) + BottomMargin(10)
+        const headerHeight = 20;
+        const topPadding = 10;
+        const bottomPadding = 10;
+        const legendHeight = headerHeight + topPadding + (itemCount * 21) + bottomPadding;
 
         const legendWidth = 160; // Increased from 140px
         const legendX = this.width - legendWidth - (this.width * 0.04); // Right aligned with padding
@@ -464,8 +471,7 @@ export class Visualizer {
         });
         group.add(bg);
 
-        // Header (30px height)
-        const headerHeight = 30;
+        // Header (20px height)
         const headerBg = new Konva.Rect({
             width: legendWidth,
             height: headerHeight,
@@ -489,7 +495,9 @@ export class Visualizer {
         });
         group.add(headerText);
 
-        let currentY = 42; // 0.7x of 60
+        // Start items right after header with small padding
+        // Adjust top margin based on header height (headerHeight = 20px)
+        let currentY = headerHeight + topPadding; // headerHeight (20) + padding (10) = 30px
 
         // Render Items
         const renderItem = (label, color, isLine = false) => {
@@ -501,7 +509,7 @@ export class Visualizer {
                 const line = new Konva.Line({
                     points: [14, lineY, 35, lineY], // 텍스트 중앙에 맞춤
                     stroke: color,
-                    strokeWidth: 1.4, // Scaled 0.7x
+                    strokeWidth: 1.4, // Scaled 0.7x (original web value)
                     dash: label.includes('Wireless') ? [3.5, 3.5] : []
                 });
                 group.add(line);
@@ -529,7 +537,7 @@ export class Visualizer {
                 fill: 'black',
                 align: 'left',
                 verticalAlign: 'middle', // Center vertically within the height
-                fontFamily: 'Samsung Sharp Sans'
+                fontFamily: 'SamsungOneKorean 400' // Use Samsung One Korean for non-title text
             });
             group.add(text);
             currentY += 21; // 30 * 0.7
@@ -537,7 +545,8 @@ export class Visualizer {
 
         // Draw Components first
         Object.keys(components).forEach(compName => {
-            const node = Object.values(targetNodes).find(n => (n.model === compName || n.type === compName));
+            // compName is now always type, not model
+            const node = Object.values(targetNodes).find(n => n.type === compName);
             const color = node ? (node.color || '#94a3b8') : '#94a3b8';
             renderItem(compName, color, false);
         });
@@ -625,9 +634,9 @@ export class Visualizer {
             });
             group.add(rect);
         } else {
-            // Logical Mode: 70x42 Card with Labels
+            // Logical Mode: 75x42 Card with Labels
             const rect = new Konva.Rect({
-                width: 70, // 100 * 0.7
+                width: 75, // Changed to 75
                 height: 42, // 60 * 0.7
                 fill: nodeColor,
                 stroke: '#ffffff',
@@ -640,13 +649,14 @@ export class Visualizer {
             });
 
             // Type Label - centered in box with auto-wrapping and height adjustment
-            const hasModel = node.model && node.model.trim() !== '';
+            // Configuration mode: only show type, not model name
+            const hasModel = false; // Always false for Configuration mode - don't show model
             let boxHeight = 42;
-            let boxWidth = 70;
+            let boxWidth = 75; // Changed to 75
             const fontSize = 15;
             const lineSpacing = 3; // 텍스트 간 간격
             const padding = 5; // 좌우 padding (5px each side)
-            const minBoxWidth = 70; // Minimum block width
+            const minBoxWidth = 75; // Minimum block width (changed to 75)
             
             // Helper function to measure text width without wrapping
             const measureTextWidth = (text) => {
@@ -670,21 +680,6 @@ export class Visualizer {
                 finalBoxWidth = Math.max(minBoxWidth, typeTextWidth + (padding * 2));
             }
             
-            // Process model text if exists
-            let modelTextStr = '';
-            let hasSpacesInModel = false;
-            let modelTextWidth = 0;
-            if (hasModel) {
-                modelTextStr = node.model;
-                hasSpacesInModel = modelTextStr.includes(' ');
-                modelTextWidth = measureTextWidth(modelTextStr);
-                
-                // If model is wider, expand block width (but only if no spaces)
-                if (!hasSpacesInModel && modelTextWidth + (padding * 2) > finalBoxWidth) {
-                    finalBoxWidth = Math.max(finalBoxWidth, modelTextWidth + (padding * 2));
-                }
-            }
-            
             // Update rect width if expanded
             if (finalBoxWidth !== boxWidth) {
                 rect.width(finalBoxWidth);
@@ -704,7 +699,7 @@ export class Visualizer {
                 align: 'center',
                 verticalAlign: 'top', // Start from top, we'll adjust position after measuring
                 fill: '#ffffff',
-                fontFamily: 'Samsung Sharp Sans',
+                fontFamily: 'SamsungOneKorean 400', // Use Samsung One Korean for non-title text
                 wrap: hasSpacesInType ? 'word' : 'none' // Only wrap if there are spaces
             });
             
@@ -714,45 +709,16 @@ export class Visualizer {
             // Measure type text height after adding to group
             const typeTextHeight = typeText.height();
             
-            let modelText = null;
-            if (hasModel) {
-                // Create model text with conditional wrapping
-                modelText = new Konva.Text({
-                    text: modelTextStr,
-                    fontSize: fontSize, // 15pt (PPT 기준과 동일)
-                    x: padding, // Add left padding
-                    y: typeTextHeight + lineSpacing, // Position below type text
-                    width: textWidth, // Reduced width for padding
-                    align: 'center',
-                    verticalAlign: 'top', // Start from top
-                    fill: '#ffffff',
-                    fontFamily: 'Samsung Sharp Sans',
-                    wrap: hasSpacesInModel ? 'word' : 'none' // Only wrap if there are spaces
-                });
-                group.add(modelText);
-                
-                // Measure model text height
-                const modelTextHeight = modelText.height();
-                
-                // Adjust box height to fit both texts with padding
-                boxHeight = Math.max(42, typeTextHeight + modelTextHeight + lineSpacing + 6); // 6px padding
-            } else {
-                // Adjust box height to fit type text with padding
-                boxHeight = Math.max(42, typeTextHeight + 6); // 6px padding
-            }
+            // Adjust box height to fit type text with padding (no model text in Configuration mode)
+            boxHeight = Math.max(42, typeTextHeight + 6); // 6px padding
             
             // Update rect height
             rect.height(boxHeight);
             
-            // Center texts vertically in the adjusted box
-            const totalTextHeight = hasModel ? (typeTextHeight + lineSpacing + modelText.height()) : typeTextHeight;
-            const startY = (boxHeight - totalTextHeight) / 2;
+            // Center text vertically in the adjusted box
+            const startY = (boxHeight - typeTextHeight) / 2;
             typeText.y(startY);
             typeText.verticalAlign('top');
-            if (hasModel) {
-                modelText.y(startY + typeTextHeight + lineSpacing);
-                modelText.verticalAlign('top');
-            }
         }
 
         // Store group reference for highlighting
@@ -1133,8 +1099,8 @@ export class Visualizer {
                 cornerRadius = isPhysical ? 5.6 : 8.4;
             }
 
-            // Increase size for padding (6px offset on each side = 12px total)
-            const highlightPadding = 6;
+            // Increase size for padding (3px offset on each side = 6px total)
+            const highlightPadding = 3;
             const highlight = new Konva.Rect({
                 name: isSource ? 'source-highlight' : 'selection-highlight',
                 width: blockWidth + (highlightPadding * 2),
@@ -1181,7 +1147,7 @@ export class Visualizer {
                     line.stroke(lineColor);
                     line.dash(conn.category === 'Cable' && conn.type === 'Wireless' ? [10, 10] : []);
                     line.shadowColor(isSelected ? lineColor : null);
-                    line.shadowBlur(isSelected ? 15 : 0);
+                    line.shadowBlur(isSelected ? 8 : 0);
                     line.shadowOpacity(isSelected ? 0.8 : 0);
                 } else {
                     // Create new line
@@ -1196,7 +1162,7 @@ export class Visualizer {
                         listening: true, // Enable click events
                         id: conn.id, // Store connection ID for click handling
                         shadowColor: isSelected ? lineColor : null,
-                        shadowBlur: isSelected ? 15 : 0,
+                        shadowBlur: isSelected ? 8 : 0,
                         shadowOpacity: isSelected ? 0.8 : 0
                     });
 
@@ -1268,8 +1234,33 @@ export class Visualizer {
             const sides = nodePorts[nodeId];
 
             Object.keys(sides).forEach(side => {
-                const connections = sides[side];
+                let connections = sides[side];
                 if (connections.length === 0) return;
+
+                // Sort connections by stored order if available
+                const connectionOrder = this.dataStore.getState().meta.connectionOrder || {};
+                const nodeOrder = connectionOrder[nodeId] || {};
+                const sideOrder = nodeOrder[side] || [];
+                
+                if (sideOrder.length > 0) {
+                    // Sort connections according to stored order
+                    const orderMap = new Map();
+                    sideOrder.forEach((connId, index) => {
+                        orderMap.set(connId, index);
+                    });
+                    connections = connections.sort((a, b) => {
+                        const orderA = orderMap.has(a.conn.id) ? orderMap.get(a.conn.id) : 9999;
+                        const orderB = orderMap.has(b.conn.id) ? orderMap.get(b.conn.id) : 9999;
+                        return orderA - orderB;
+                    });
+                } else {
+                    // Default: sort by target Y position (top to bottom)
+                    connections = connections.sort((a, b) => {
+                        const aY = a.otherRect ? a.otherRect.y : 0;
+                        const bY = b.otherRect ? b.otherRect.y : 0;
+                        return aY - bY;
+                    });
+                }
 
                 const portCount = connections.length;
                 const spacing = 10;
@@ -1339,7 +1330,7 @@ export class Visualizer {
             return {
                 x: group.x(),
                 y: group.y(),
-                width: mode === 'INSTALLATION' ? 16.8 : 70, // Scaled 0.7x
+                width: mode === 'INSTALLATION' ? 16.8 : 75, // Changed to 75
                 height: mode === 'INSTALLATION' ? 16.8 : 42  // Scaled 0.7x
             };
         }
@@ -1355,7 +1346,7 @@ export class Visualizer {
             return {
                 x: (node.logicalPos?.col || 0) * 24,
                 y: (node.logicalPos?.row || 0) * 24,
-                width: 70,
+                width: 75, // Changed to 75
                 height: 42
             };
         }
@@ -1526,8 +1517,8 @@ export class Visualizer {
     }
 
     snapToHalfGridX(x) {
-        // Grid = 24px -> half-grid = 12px
-        return Math.round(x / 12) * 12;
+        // Grid = 24px -> quarter-grid = 6px (half of half-grid)
+        return Math.round(x / 6) * 6;
     }
 
     simplifyOrthogonalPoints(points) {
@@ -1625,7 +1616,7 @@ export class Visualizer {
                 const shadowColor = conn?.color || '#94a3b8';
 
                 line.shadowColor(shadowColor);
-                line.shadowBlur(15);
+                line.shadowBlur(8);
                 line.shadowOpacity(0.8);
             } else {
                 // Remove shadow for unselected connections
@@ -1771,7 +1762,15 @@ export class Visualizer {
         const activeElement = document.activeElement;
         if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) return;
 
-        const dx = e.key === 'ArrowLeft' ? -12 : (e.key === 'ArrowRight' ? 12 : 0);
+        // Handle Up/Down arrows for connection order adjustment
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            this.adjustConnectionOrder(e.key === 'ArrowUp' ? -1 : 1);
+            return;
+        }
+
+        // Handle Left/Right arrows for bend X adjustment
+        const dx = e.key === 'ArrowLeft' ? -6 : (e.key === 'ArrowRight' ? 6 : 0);
         if (!dx) return;
 
         e.preventDefault();
@@ -1794,6 +1793,132 @@ export class Visualizer {
             const next = this.snapToHalfGridX(bendX + dx);
             this.setConnectionBendX(connId, mode, next);
         });
+    }
+
+    adjustConnectionOrder(direction) {
+        // direction: -1 for up (move earlier), 1 for down (move later)
+        const data = this.dataStore.getState();
+        const mode = data.meta.mode;
+        const connections = mode === 'NETWORK' ? data.networkConnections : data.connections;
+        const nodes = mode === 'NETWORK' ? data.networkNodes : data.nodes;
+        
+        if (this.selectedConnectionIds.size === 0) return;
+
+        // Get connection order metadata or initialize
+        let connectionOrder = data.meta.connectionOrder || {};
+        
+        // Process each selected connection
+        Array.from(this.selectedConnectionIds).forEach(connId => {
+            const conn = connections[connId];
+            if (!conn) return;
+
+            const sourceNode = nodes[conn.source];
+            const targetNode = nodes[conn.target];
+            if (!sourceNode || !targetNode) return;
+
+            // Determine which side this connection attaches to
+            const sourceRect = this.getNodeRect(sourceNode, mode);
+            const targetRect = this.getNodeRect(targetNode, mode);
+            const { sourceSide, targetSide } = this.determineConnectionSides(sourceRect, targetRect);
+
+            // Adjust order for source node
+            this.adjustConnectionOrderForNode(connectionOrder, conn.source, sourceSide, connId, direction, connections, nodes, mode);
+            
+            // Adjust order for target node
+            this.adjustConnectionOrderForNode(connectionOrder, conn.target, targetSide, connId, direction, connections, nodes, mode);
+        });
+
+        // Update metadata
+        this.dataStore.updateMeta({ connectionOrder });
+        
+        // Re-render connections to apply new order
+        this.render();
+    }
+
+    adjustConnectionOrderForNode(connectionOrder, nodeId, side, connId, direction, connections, nodes, mode) {
+        // Initialize node order if needed
+        if (!connectionOrder[nodeId]) {
+            connectionOrder[nodeId] = {};
+        }
+        if (!connectionOrder[nodeId][side]) {
+            connectionOrder[nodeId][side] = [];
+        }
+
+        const sideOrder = connectionOrder[nodeId][side];
+        const currentIndex = sideOrder.indexOf(connId);
+
+        if (currentIndex === -1) {
+            // Connection not in order list, need to build order list first
+            // Find all connections on this side
+            const node = nodes[nodeId];
+            if (!node) return;
+            
+            const rect = this.getNodeRect(node, mode);
+            const allConnectionsOnSide = [];
+            
+            Object.values(connections).forEach(conn => {
+                if (conn.source === nodeId || conn.target === nodeId) {
+                    const otherNodeId = conn.source === nodeId ? conn.target : conn.source;
+                    const otherNode = nodes[otherNodeId];
+                    if (!otherNode) return;
+                    
+                    const otherRect = this.getNodeRect(otherNode, mode);
+                    const { sourceSide, targetSide } = this.determineConnectionSides(
+                        conn.source === nodeId ? rect : otherRect,
+                        conn.target === nodeId ? rect : otherRect
+                    );
+                    
+                    const connSide = conn.source === nodeId ? sourceSide : targetSide;
+                    if (connSide === side) {
+                        allConnectionsOnSide.push(conn.id);
+                    }
+                }
+            });
+
+            // Initialize order if empty (sort by target Y position as default)
+            if (sideOrder.length === 0) {
+                allConnectionsOnSide.sort((a, b) => {
+                    const connA = connections[a];
+                    const connB = connections[b];
+                    if (!connA || !connB) return 0;
+                    
+                    const otherNodeIdA = connA.source === nodeId ? connA.target : connA.source;
+                    const otherNodeIdB = connB.source === nodeId ? connB.target : connB.source;
+                    const otherNodeA = nodes[otherNodeIdA];
+                    const otherNodeB = nodes[otherNodeIdB];
+                    if (!otherNodeA || !otherNodeB) return 0;
+                    
+                    const rectA = this.getNodeRect(otherNodeA, mode);
+                    const rectB = this.getNodeRect(otherNodeB, mode);
+                    return rectA.y - rectB.y;
+                });
+                sideOrder.push(...allConnectionsOnSide);
+            } else {
+                // Add missing connections to the end
+                allConnectionsOnSide.forEach(id => {
+                    if (!sideOrder.includes(id)) {
+                        sideOrder.push(id);
+                    }
+                });
+            }
+            
+            const newIndex = sideOrder.indexOf(connId);
+            if (newIndex === -1) return;
+            
+            // Move connection
+            const newIndexAdjusted = Math.max(0, Math.min(sideOrder.length - 1, newIndex + direction));
+            if (newIndexAdjusted !== newIndex) {
+                sideOrder.splice(newIndex, 1);
+                sideOrder.splice(newIndexAdjusted, 0, connId);
+            }
+        } else {
+            // Connection already in order list, move it
+            const newIndex = Math.max(0, Math.min(sideOrder.length - 1, currentIndex + direction));
+            if (newIndex !== currentIndex) {
+                sideOrder.splice(currentIndex, 1);
+                sideOrder.splice(newIndex, 0, connId);
+            }
+        }
     }
 
     getConnectionBendX(conn, mode) {
@@ -1853,8 +1978,8 @@ export class Visualizer {
         const activeElement = document.activeElement;
         if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) return;
 
-        const dx = e.key === 'ArrowLeft' ? -24 : (e.key === 'ArrowRight' ? 24 : 0);
-        const dy = e.key === 'ArrowUp' ? -24 : (e.key === 'ArrowDown' ? 24 : 0);
+        const dx = e.key === 'ArrowLeft' ? -6 : (e.key === 'ArrowRight' ? 6 : 0);
+        const dy = e.key === 'ArrowUp' ? -6 : (e.key === 'ArrowDown' ? 6 : 0);
 
         if (!dx && !dy) return;
 
@@ -1871,6 +1996,7 @@ export class Visualizer {
             if (mode === 'CONFIGURATION') {
                 const currentCol = node.logicalPos?.col || 0;
                 const currentRow = node.logicalPos?.row || 0;
+                // Grid is 24px, so 6px = 0.25 grid units
                 const newCol = currentCol + (dx / 24);
                 const newRow = currentRow + (dy / 24);
                 this.dataStore.updateNode(nodeId, {

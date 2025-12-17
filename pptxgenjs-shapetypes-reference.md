@@ -55,3 +55,5 @@ slide.addShape(pres.ShapeType.roundRect, {
 - 전체 ShapeType 목록은 TypeScript 정의 파일 참고: https://github.com/gitbrent/PptxGenJS/tree/master/types/index.d.ts
 - 공식 문서: https://gitbrent.github.io/PptxGenJS/docs/api-shapes/
 
+
+

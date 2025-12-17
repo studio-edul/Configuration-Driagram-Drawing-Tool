@@ -23,6 +23,17 @@
     font-display: swap;
 }
 
+/* Samsung One Korean Font Face */
+@font-face {
+    font-family: 'SamsungOneKorean 400';
+    src: url('../fonts/samsung-one-korean/SamsungOneKorean-400.woff2') format('woff2'),
+         url('../fonts/samsung-one-korean/SamsungOneKorean-400.woff') format('woff'),
+         url('../fonts/samsung-one-korean/SamsungOneKorean-400.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
 /* Custom Styles */
 body {
     font-family: 'Samsung Sharp Sans', 'Noto Sans KR', sans-serif;
