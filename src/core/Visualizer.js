@@ -1255,8 +1255,12 @@ export class Visualizer {
                 let connections = sides[side];
                 if (connections.length === 0) return;
 
-                // Sort connections by stored order if available
-                const connectionOrder = this.dataStore.getState().meta.connectionOrder || {};
+                // Sort connections by stored order if available (mode-specific)
+                const data = this.dataStore.getState();
+                const orderKey = mode === 'CONFIGURATION' ? 'configurationConnectionOrder' : 
+                                mode === 'INSTALLATION' ? 'installationConnectionOrder' : 
+                                'networkConnectionOrder';
+                const connectionOrder = data.meta[orderKey] || {};
                 const nodeOrder = connectionOrder[nodeId] || {};
                 const sideOrder = nodeOrder[side] || [];
                 
@@ -1617,12 +1621,26 @@ export class Visualizer {
 
     updateConnectionSelection() {
         // Update shadow effect for selected connections
+        const data = this.dataStore.getState();
+        const mode = data.meta.mode;
+        
+        // Get connections based on mode
+        let targetConnections;
+        if (mode === 'NETWORK') {
+            targetConnections = data.networkConnections || {};
+        } else if (mode === 'CONFIGURATION') {
+            targetConnections = data.configurationConnections || {};
+        } else if (mode === 'INSTALLATION') {
+            targetConnections = data.installationConnections || {};
+        } else {
+            targetConnections = {};
+        }
+        
         Object.entries(this.connectionLines).forEach(([connId, line]) => {
             const isSelected = this.selectedConnectionIds.has(connId);
             if (isSelected) {
                 // Get connection color for shadow
-                const data = this.dataStore.getState();
-                const conn = data.connections[connId];
+                const conn = targetConnections[connId];
                 const shadowColor = conn?.color || '#94a3b8';
 
                 line.shadowColor(shadowColor);
@@ -1655,6 +1673,18 @@ export class Visualizer {
         if (!editableMode) return;
 
         const data = this.dataStore.getState();
+        
+        // Get connections based on mode
+        let targetConnections;
+        if (mode === 'NETWORK') {
+            targetConnections = data.networkConnections || {};
+        } else if (mode === 'CONFIGURATION') {
+            targetConnections = data.configurationConnections || {};
+        } else if (mode === 'INSTALLATION') {
+            targetConnections = data.installationConnections || {};
+        } else {
+            targetConnections = {};
+        }
 
         Array.from(this.selectedConnectionIds).forEach(connId => {
             const line = this.connectionLines[connId];
@@ -1662,7 +1692,7 @@ export class Visualizer {
             const info = this.getPrimaryVerticalSegmentInfo(line.points());
             if (!info) return;
 
-            const conn = data.connections?.[connId];
+            const conn = targetConnections[connId];
             const color = conn?.color || '#94a3b8';
 
             let handle = this.connectionBendHandles[connId];
@@ -1765,7 +1795,25 @@ export class Visualizer {
 
     setConnectionBendX(connId, mode, bendX) {
         const field = (mode === 'CONFIGURATION') ? 'bendXLogical' : 'bendXPhysical';
-        this.dataStore.updateConnection(connId, { [field]: bendX });
+        const data = this.dataStore.getState();
+        
+        // Update connection in the correct mode-specific connection set
+        let updated = false;
+        if (mode === 'CONFIGURATION' && data.configurationConnections && data.configurationConnections[connId]) {
+            data.configurationConnections[connId][field] = bendX;
+            updated = true;
+        } else if (mode === 'INSTALLATION' && data.installationConnections && data.installationConnections[connId]) {
+            data.installationConnections[connId][field] = bendX;
+            updated = true;
+        } else if (mode === 'NETWORK' && data.networkConnections && data.networkConnections[connId]) {
+            data.networkConnections[connId][field] = bendX;
+            updated = true;
+        }
+        
+        if (updated) {
+            // Trigger notification to re-render
+            this.dataStore.notify();
+        }
     }
 
     handleConnectionArrowKey(e) {
@@ -1787,9 +1835,21 @@ export class Visualizer {
 
         const mode = this.dataStore.getState().meta.mode;
         const data = this.dataStore.getState();
+        
+        // Get connections based on mode
+        let targetConnections;
+        if (mode === 'NETWORK') {
+            targetConnections = data.networkConnections || {};
+        } else if (mode === 'CONFIGURATION') {
+            targetConnections = data.configurationConnections || {};
+        } else if (mode === 'INSTALLATION') {
+            targetConnections = data.installationConnections || {};
+        } else {
+            targetConnections = {};
+        }
 
         Array.from(this.selectedConnectionIds).forEach(connId => {
-            const conn = data.connections?.[connId];
+            const conn = targetConnections[connId];
             if (!conn) return;
 
             let bendX = this.getConnectionBendX(conn, mode);
@@ -1803,19 +1863,38 @@ export class Visualizer {
             const next = this.snapToHalfGridX(bendX + dx);
             this.setConnectionBendX(connId, mode, next);
         });
+        
+        // Explicitly re-render connections to apply bend X changes
+        const targetNodes = mode === 'NETWORK' ? data.networkNodes : data.nodes;
+        this.renderConnections(targetConnections, targetNodes, mode);
     }
 
     adjustConnectionOrder(direction) {
         // direction: -1 for up (move earlier), 1 for down (move later)
         const data = this.dataStore.getState();
         const mode = data.meta.mode;
-        const connections = mode === 'NETWORK' ? data.networkConnections : data.connections;
+        
+        // Get connections based on mode
+        let connections;
+        if (mode === 'NETWORK') {
+            connections = data.networkConnections || {};
+        } else if (mode === 'CONFIGURATION') {
+            connections = data.configurationConnections || {};
+        } else if (mode === 'INSTALLATION') {
+            connections = data.installationConnections || {};
+        } else {
+            connections = {};
+        }
+        
         const nodes = mode === 'NETWORK' ? data.networkNodes : data.nodes;
         
         if (this.selectedConnectionIds.size === 0) return;
 
-        // Get connection order metadata or initialize
-        let connectionOrder = data.meta.connectionOrder || {};
+        // Get connection order metadata for this specific mode
+        const orderKey = mode === 'CONFIGURATION' ? 'configurationConnectionOrder' : 
+                        mode === 'INSTALLATION' ? 'installationConnectionOrder' : 
+                        'networkConnectionOrder';
+        let connectionOrder = data.meta[orderKey] || {};
         
         // Process each selected connection
         Array.from(this.selectedConnectionIds).forEach(connId => {
@@ -1838,8 +1917,10 @@ export class Visualizer {
             this.adjustConnectionOrderForNode(connectionOrder, conn.target, targetSide, connId, direction, connections, nodes, mode);
         });
 
-        // Update metadata
-        this.dataStore.updateMeta({ connectionOrder });
+        // Update metadata for this specific mode
+        const updateObj = {};
+        updateObj[orderKey] = connectionOrder;
+        this.dataStore.updateMeta(updateObj);
         
         // Re-render connections to apply new order
         this.render();
