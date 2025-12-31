@@ -1053,6 +1053,15 @@ export class PPTExportManager {
         const isImfine = title.includes('I M Fine');
         const categoryText = isImfine ? 'I M FINE' : 'Local';
         
+        // Calculate row height for equal distribution
+        const TARGET_DATA_ROWS = 12; // Target number of data rows
+        const SLIDE_HEIGHT = 7.5;
+        const TABLE_START_Y = 1.0;
+        const AVAILABLE_HEIGHT = 4; // Fixed table height
+        const HEADER_ROWS_COUNT = 2;
+        const TOTAL_ROWS = HEADER_ROWS_COUNT + TARGET_DATA_ROWS;
+        const ROW_HEIGHT = AVAILABLE_HEIGHT / TOTAL_ROWS;
+        
         // First header row: Black background with white text showing "Local" or "I M FINE"
         // Border array: [top, right, bottom, left] - all sides E2E8F0
         const firstHeaderOpts = {
@@ -1067,7 +1076,8 @@ export class PPTExportManager {
                 { pt: 1, color: 'E2E8F0' }, // Bottom - ensure this matches second header row top
                 { pt: 1, color: 'E2E8F0' }  // Left
             ],
-            colspan: 5 // Span all 5 columns
+            colspan: 5, // Span all 5 columns
+            h: ROW_HEIGHT // Set equal height
         };
 
         // Second header row: Colored background with column names
@@ -1084,12 +1094,13 @@ export class PPTExportManager {
                 { pt: 1, color: 'E2E8F0' }, // Bottom
                 { pt: 1, color: 'E2E8F0' }  // Left
             ],
-            fontFace: 'SamsungOneKorean 400' // Use Samsung One Korean for non-title text
+            fontFace: 'SamsungOneKorean 400', // Use Samsung One Korean for non-title text
+            h: ROW_HEIGHT // Set equal height
         };
 
         const rows = [
             [
-                { text: categoryText, options: { ...firstHeaderOpts, colspan: 5 } }
+                { text: categoryText, options: firstHeaderOpts }
             ],
             [
                 { text: 'Hardware', options: headerOpts },
@@ -1101,6 +1112,21 @@ export class PPTExportManager {
         ];
 
         // Process hardware list with rowspan for R&R column
+        // Calculate actual number of data rows (minimum 10, but can exceed if more hardware exists)
+        const actualDataRowCount = hardwareList && hardwareList.length > 0 
+            ? Math.max(TARGET_DATA_ROWS, hardwareList.length) 
+            : TARGET_DATA_ROWS;
+        
+        // Recalculate ROW_HEIGHT based on actual number of rows
+        // Total rows = header rows (2) + actual data rows
+        // This ensures table height stays constant regardless of row count
+        const TOTAL_ROWS_ACTUAL = HEADER_ROWS_COUNT + actualDataRowCount;
+        const ROW_HEIGHT_ACTUAL = AVAILABLE_HEIGHT / TOTAL_ROWS_ACTUAL;
+        
+        // Update header row heights to match actual row height
+        firstHeaderOpts.h = ROW_HEIGHT_ACTUAL;
+        headerOpts.h = ROW_HEIGHT_ACTUAL;
+        
         if (hardwareList && hardwareList.length > 0) {
             hardwareList.forEach((item, index) => {
                 const itemKey = `${item.type}|${item.model}`;
@@ -1111,10 +1137,10 @@ export class PPTExportManager {
                 
                 // Determine rowspan for R&R column (first row only)
                 const isFirstRow = index === 0;
-                const rowspan = isFirstRow ? hardwareList.length : 0;
+                // Use actual data row count for rowspan
+                const rowspan = isFirstRow ? actualDataRowCount : 0;
                 
                 // Row background color: alternate white and colored (red-50 for I M FINE, sky-50 for Local)
-                const isImfine = title.includes('I M Fine');
                 const rowColor = index % 2 === 0 ? 'FFFFFF' : (isImfine ? 'FEF2F2' : 'F0F9FF'); // red-50 or sky-50
                 
                 const cellOpts = {
@@ -1123,7 +1149,8 @@ export class PPTExportManager {
                     valign: 'middle',
                     border: { pt: 1, color: 'E2E8F0' },
                     fill: rowColor,
-                    fontFace: 'SamsungOneKorean 400' // Use Samsung One Korean for non-title text
+                    fontFace: 'SamsungOneKorean 400', // Use Samsung One Korean for non-title text
+                    h: ROW_HEIGHT_ACTUAL // Set equal height for all cells
                 };
 
                 const modelCellOpts = {
@@ -1134,7 +1161,8 @@ export class PPTExportManager {
                 const rrCellOpts = {
                     ...cellOpts,
                     fill: 'F3F4F6', // gray-100
-                    rowspan: rowspan
+                    rowspan: rowspan,
+                    h: ROW_HEIGHT_ACTUAL * actualDataRowCount // R&R cell spans all data rows
                 };
 
                 const row = [
@@ -1147,25 +1175,92 @@ export class PPTExportManager {
 
                 rows.push(row);
             });
+            
+            // Add empty rows to reach TARGET_DATA_ROWS if needed (only if less than 10)
+            const currentDataRowCount = hardwareList.length;
+            if (currentDataRowCount < TARGET_DATA_ROWS) {
+                const emptyRowsNeeded = TARGET_DATA_ROWS - currentDataRowCount;
+                
+                for (let i = 0; i < emptyRowsNeeded; i++) {
+                    const emptyRowIndex = currentDataRowCount + i;
+                    const rowColor = emptyRowIndex % 2 === 0 ? 'FFFFFF' : (isImfine ? 'FEF2F2' : 'F0F9FF');
+                    
+                    const cellOpts = {
+                        color: '334155',
+                        align: 'center',
+                        valign: 'middle',
+                        border: { pt: 1, color: 'E2E8F0' },
+                        fill: rowColor,
+                        fontFace: 'SamsungOneKorean 400',
+                        h: ROW_HEIGHT_ACTUAL
+                    };
+                    
+                    const emptyRow = [
+                        { text: '', options: cellOpts },
+                        { text: '', options: cellOpts },
+                        { text: '', options: cellOpts },
+                        // No R&R cell for empty rows (already handled by rowspan in first row)
+                        { text: '', options: cellOpts }
+                    ];
+                    
+                    rows.push(emptyRow);
+                }
+            }
         } else {
+            // No hardware - create empty table with 10 data rows
             const cellOpts = {
                 color: '334155',
                 align: 'center',
                 valign: 'middle',
                 border: { pt: 1, color: 'E2E8F0' },
-                fontFace: 'SamsungOneKorean 400' // Use Samsung One Korean for non-title text
+                fontFace: 'SamsungOneKorean 400',
+                h: ROW_HEIGHT_ACTUAL
             };
-            rows.push([
-                { text: 'No hardware defined', options: { ...cellOpts, colspan: 5 } }
-            ]);
+            
+            // Add empty data rows
+            for (let i = 0; i < actualDataRowCount; i++) {
+                const rowColor = i % 2 === 0 ? 'FFFFFF' : (isImfine ? 'FEF2F2' : 'F0F9FF');
+                const emptyCellOpts = {
+                    ...cellOpts,
+                    fill: rowColor
+                };
+                
+                const rrCellOpts = {
+                    ...emptyCellOpts,
+                    fill: 'F3F4F6',
+                    rowspan: i === 0 ? actualDataRowCount : 0,
+                    h: i === 0 ? ROW_HEIGHT_ACTUAL * actualDataRowCount : ROW_HEIGHT_ACTUAL
+                };
+                
+                const emptyRow = [
+                    { text: '', options: emptyCellOpts },
+                    { text: '', options: emptyCellOpts },
+                    { text: '', options: emptyCellOpts },
+                    i === 0 ? { text: isImfine ? 'I M FINE' : 'Local', options: rrCellOpts } : null,
+                    { text: '', options: emptyCellOpts }
+                ].filter(cell => cell !== null);
+                
+                rows.push(emptyRow);
+            }
         }
 
-        // Add Table
+        // Create row heights array (2 header rows + actual data rows)
+        // Use ROW_HEIGHT_ACTUAL which is calculated based on actual row count
+        const rowH = [];
+        for (let i = 0; i < HEADER_ROWS_COUNT; i++) {
+            rowH.push(ROW_HEIGHT_ACTUAL);
+        }
+        for (let i = 0; i < actualDataRowCount; i++) {
+            rowH.push(ROW_HEIGHT_ACTUAL);
+        }
+
+        // Add Table with equal row heights
         slide.addTable(rows, {
             x: 0.5,
             y: 1.0,
             w: 9.0,
             colW: [2.0, 2.5, 1.0, 1.5, 2.0],
+            rowH: rowH, // Set equal heights for all rows
             fontSize: 10,
             align: 'center',
             valign: 'middle'

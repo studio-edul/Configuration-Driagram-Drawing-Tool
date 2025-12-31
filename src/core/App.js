@@ -9,6 +9,7 @@ import { PropertyManager } from '../managers/PropertyManager.js';
 import { HardwareRegistryManager } from '../managers/HardwareRegistryManager.js';
 import { HardwareListManager } from '../managers/HardwareListManager.js';
 import { LegendManager } from '../managers/LegendManager.js';
+import { ProjectManager } from '../managers/ProjectManager.js';
 import { Visualizer } from './Visualizer.js';
 import { DataStore } from './DataStore.js';
 
@@ -27,6 +28,7 @@ export class App {
         this.interactionManager = new InteractionManager(this.dataStore, this.visualizer);
         this.hardwareListManager = new HardwareListManager(this.dataStore);
         this.legendManager = new LegendManager(this.dataStore);
+        this.projectManager = new ProjectManager(this.dataStore, this.visualizer);
 
         // Bind Selection - This will be wrapped by InteractionManager for cable connection mode
         // Normal node selection goes to PropertyManager
@@ -53,7 +55,34 @@ export class App {
         // We need to add this logic to Visualizer or here.
         // Let's add a simple stage click listener in Visualizer for deselect.
 
+        // Initialize project file buttons
+        this.initProjectFileButtons();
+
         // Make hardwareListManager accessible globally for checkbox handler
         window.app = this;
+    }
+
+    initProjectFileButtons() {
+        // Import JSON button
+        const importButton = document.getElementById('btn-import-json');
+        const importInput = document.getElementById('input-import-project');
+        
+        if (importButton && importInput) {
+            importButton.addEventListener('click', () => {
+                importInput.click();
+            });
+            
+            importInput.addEventListener('change', (e) => {
+                this.projectManager.handleFileInput(e);
+            });
+        }
+
+        // Export JSON button
+        const exportButton = document.getElementById('btn-export-json');
+        if (exportButton) {
+            exportButton.addEventListener('click', () => {
+                this.projectManager.exportProject();
+            });
+        }
     }
 }

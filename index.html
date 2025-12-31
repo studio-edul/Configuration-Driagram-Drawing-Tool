@@ -92,6 +92,21 @@
                 </button>
             </div>
 
+            <!-- Project File Buttons -->
+            <div class="flex items-center gap-2">
+                <input type="file" id="input-import-project" accept=".cdt,.json" class="hidden">
+                <button id="btn-import-json"
+                    class="px-4 py-1.5 text-sm rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all flex items-center gap-2">
+                    <i data-lucide="upload" class="w-4 h-4"></i>
+                    Import JSON
+                </button>
+                <button id="btn-export-json"
+                    class="px-4 py-1.5 text-sm rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all flex items-center gap-2">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    Export JSON
+                </button>
+            </div>
+
             <!-- Export PPT Button (Separated) -->
             <button id="btn-export-ppt"
                 class="px-4 py-1.5 text-sm rounded-md bg-slate-900 text-white hover:bg-slate-800 transition-all flex items-center gap-2 shadow-sm">
