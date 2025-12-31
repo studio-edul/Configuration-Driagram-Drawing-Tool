@@ -114,8 +114,13 @@ export class HardwareListManager {
         // Count hardware items (devices and cables)
         const hardwareMap = new Map();
 
-        // Count devices
+        // Count devices (exclude WAN)
         Object.values(nodes).forEach(node => {
+            // Skip WAN - it should not appear in hardware list
+            if (node.type === 'WAN') {
+                return;
+            }
+            
             const key = `${node.type}|${node.model || ''}`;
             if (hardwareMap.has(key)) {
                 hardwareMap.get(key).count += 1;

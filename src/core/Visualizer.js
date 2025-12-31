@@ -766,6 +766,9 @@ export class Visualizer {
 
             // Handle node selection
             if (this.onNodeSelect) {
+                // Check if cable is selected for connection mode
+                const isCableMode = window.app && window.app.interactionManager && window.app.interactionManager.selectedCable;
+                
                 const isMultiSelect = this.modifierKeys.shift || this.modifierKeys.ctrl;
 
                 if (isMultiSelect) {
@@ -781,24 +784,36 @@ export class Visualizer {
                     this.selectedConnectionIds.clear();
                     this.updateConnectionSelection();
 
-                    // If clicking the same single-selected node, deselect it
-                    const wasSelected = this.selectedNodeIds.has(node.id);
-                    const wasOnlySelected = this.selectedNodeIds.size === 1 && wasSelected;
-
-                    // Always clear first
-                    this.selectedNodeIds.clear();
-
-                    if (!wasOnlySelected) {
-                        // Select this node (unless it was the only selected one)
+                    // If cable is selected, always select the node for connection mode
+                    if (isCableMode) {
+                        // Clear and select this node for cable connection
+                        this.selectedNodeIds.clear();
                         this.selectedNodeIds.add(node.id);
+                    } else {
+                        // Normal selection mode: If clicking the same single-selected node, deselect it
+                        const wasSelected = this.selectedNodeIds.has(node.id);
+                        const wasOnlySelected = this.selectedNodeIds.size === 1 && wasSelected;
+
+                        // Always clear first
+                        this.selectedNodeIds.clear();
+
+                        if (!wasOnlySelected) {
+                            // Select this node (unless it was the only selected one)
+                            this.selectedNodeIds.add(node.id);
+                        }
                     }
                 }
 
                 // Update highlights immediately
                 this.updateAllNodeHighlights();
 
-                // Call original handler for property panel (only if node is selected)
-                if (this.selectedNodeIds.has(node.id) && this.selectedNodeIds.size === 1) {
+                // Call original handler for property panel or cable connection
+                if (isCableMode) {
+                    // In cable mode, always call onNodeSelect to trigger connection mode
+                    // even if node was already selected
+                    this.onNodeSelect(node.id);
+                } else if (this.selectedNodeIds.has(node.id) && this.selectedNodeIds.size === 1) {
+                    // Normal mode: only call if node is selected
                     this.onNodeSelect(node.id);
                 } else if (this.selectedNodeIds.size === 0) {
                     // Deselect property panel if nothing is selected
@@ -846,7 +861,8 @@ export class Visualizer {
 
                     Object.values(targetConnections).forEach(conn => {
                         if (this.selectedNodeIds.has(conn.source) && this.selectedNodeIds.has(conn.target)) {
-                            const bendX = this.getConnectionBendX(conn, mode);
+                            const offsets = this.connectionPortOffsets?.[conn.id];
+                            const bendX = this.getConnectionBendX(conn, mode, offsets);
                             // If bendX is set (custom), define start point. If not set, we can check if it's currently rendered and calculate it,
                             // or ignore it (default routing will handle automatic relative movement usually, but if we want to freeze "auto" layout during drag, we might need it).
                             // For this task, we focus on preserving CUSTOM bends or "fixed" bends.
@@ -976,7 +992,8 @@ export class Visualizer {
                     Object.entries(this.tempBendOverrides).forEach(([connId, bendX]) => {
                         // Apply snap to the final bend position
                         const snappedBendX = this.snapToHalfGridX(bendX);
-                        this.setConnectionBendX(connId, mode, snappedBendX);
+                        const offsets = this.connectionPortOffsets?.[connId];
+                        this.setConnectionBendX(connId, mode, snappedBendX, offsets);
 
                         // Clear temporary attribute
                         const line = this.connectionLines[connId];
@@ -1323,11 +1340,11 @@ export class Visualizer {
             const offsets = portOffsets[conn.id];
             if (offsets?.start && offsets?.end) {
                 // Check if there is a stored bendX override
-                const bendX = this.getConnectionBendX(conn, mode);
+                const bendX = this.getConnectionBendX(conn, mode, offsets);
 
                 let points;
                 if (typeof bendX === 'number') {
-                    // Use stored bendX
+                    // Use stored bendX (now converted to absolute coordinate)
                     points = this.buildBendOverrideRoute(offsets.start, offsets.end, bendX);
                 } else {
                     // Calculate default route
@@ -1732,7 +1749,8 @@ export class Visualizer {
 
                 handle.on('dragend', () => {
                     const bendX = this.snapToHalfGridX(handle.x());
-                    this.setConnectionBendX(connId, mode, bendX);
+                    const offsets = this.connectionPortOffsets?.[connId];
+                    this.setConnectionBendX(connId, mode, bendX, offsets);
                 });
 
                 this.connectionBendHandles[connId] = handle;
@@ -1793,20 +1811,37 @@ export class Visualizer {
         return this.simplifyOrthogonalPoints(points);
     }
 
-    setConnectionBendX(connId, mode, bendX) {
+    setConnectionBendX(connId, mode, bendX, offsets) {
         const field = (mode === 'CONFIGURATION') ? 'bendXLogical' : 'bendXPhysical';
         const data = this.dataStore.getState();
+        
+        // Get current connection to check for existing value
+        let currentConn = null;
+        if (mode === 'CONFIGURATION' && data.configurationConnections && data.configurationConnections[connId]) {
+            currentConn = data.configurationConnections[connId];
+        } else if (mode === 'INSTALLATION' && data.installationConnections && data.installationConnections[connId]) {
+            currentConn = data.installationConnections[connId];
+        } else if (mode === 'NETWORK' && data.networkConnections && data.networkConnections[connId]) {
+            currentConn = data.networkConnections[connId];
+        }
+        
+        // Convert absolute bendX to relative offset (based on midpoint of two blocks)
+        let valueToStore = bendX;
+        if (offsets?.start && offsets?.end) {
+            const midpointX = (offsets.start.x + offsets.end.x) / 2;
+            valueToStore = bendX - midpointX; // Store as offset from midpoint
+        }
         
         // Update connection in the correct mode-specific connection set
         let updated = false;
         if (mode === 'CONFIGURATION' && data.configurationConnections && data.configurationConnections[connId]) {
-            data.configurationConnections[connId][field] = bendX;
+            data.configurationConnections[connId][field] = valueToStore;
             updated = true;
         } else if (mode === 'INSTALLATION' && data.installationConnections && data.installationConnections[connId]) {
-            data.installationConnections[connId][field] = bendX;
+            data.installationConnections[connId][field] = valueToStore;
             updated = true;
         } else if (mode === 'NETWORK' && data.networkConnections && data.networkConnections[connId]) {
-            data.networkConnections[connId][field] = bendX;
+            data.networkConnections[connId][field] = valueToStore;
             updated = true;
         }
         
@@ -1852,7 +1887,8 @@ export class Visualizer {
             const conn = targetConnections[connId];
             if (!conn) return;
 
-            let bendX = this.getConnectionBendX(conn, mode);
+            const offsets = this.connectionPortOffsets?.[connId];
+            let bendX = this.getConnectionBendX(conn, mode, offsets);
             if (typeof bendX !== 'number') {
                 const line = this.connectionLines[connId];
                 const info = line ? this.getPrimaryVerticalSegmentInfo(line.points()) : null;
@@ -1861,7 +1897,7 @@ export class Visualizer {
             }
 
             const next = this.snapToHalfGridX(bendX + dx);
-            this.setConnectionBendX(connId, mode, next);
+            this.setConnectionBendX(connId, mode, next, offsets);
         });
         
         // Explicitly re-render connections to apply bend X changes
@@ -2012,12 +2048,27 @@ export class Visualizer {
         }
     }
 
-    getConnectionBendX(conn, mode) {
+    getConnectionBendX(conn, mode, offsets) {
         if (this.tempBendOverrides && this.tempBendOverrides[conn.id] !== undefined) {
             return this.tempBendOverrides[conn.id];
         }
         const field = (mode === 'CONFIGURATION') ? 'bendXLogical' : 'bendXPhysical';
-        return conn[field];
+        const storedValue = conn[field];
+        
+        // If stored value is undefined, return undefined (will use default routing)
+        if (typeof storedValue !== 'number') {
+            return storedValue;
+        }
+        
+        // Convert relative offset to absolute coordinate (based on midpoint of two blocks)
+        if (offsets?.start && offsets?.end) {
+            const midpointX = (offsets.start.x + offsets.end.x) / 2;
+            return midpointX + storedValue; // Convert offset back to absolute coordinate
+        }
+        
+        // Fallback: if offsets not available, return stored value as-is (for backward compatibility)
+        // This handles cases where offsets are not yet calculated
+        return storedValue;
     }
 
     handleKeyDown(e) {

@@ -969,6 +969,11 @@ export class PPTExportManager {
         // Count hardware items (same logic as HardwareListManager.renderTable)
         const hardwareMap = new Map();
         Object.values(visibleNodes).forEach(node => {
+            // Skip WAN - it should not appear in hardware list
+            if (node.type === 'WAN') {
+                return;
+            }
+            
             const key = `${node.type}|${node.model || ''}`;
             if (hardwareMap.has(key)) {
                 hardwareMap.get(key).count += 1;
