@@ -71,7 +71,11 @@ export class DataStore {
         nodeIds.forEach(nodeId => {
             if (this.projectData.nodes[nodeId]) {
                 delete this.projectData.nodes[nodeId];
-                this.removeConnectionsForNode(nodeId); // Clean up connections
+                this.removeConnectionsForNode(nodeId, 'STANDARD'); // Clean up connections
+                deleted = true;
+            } else if (this.projectData.networkNodes[nodeId]) {
+                delete this.projectData.networkNodes[nodeId];
+                this.removeConnectionsForNode(nodeId, 'NETWORK'); // Clean up connections
                 deleted = true;
             }
         });

@@ -305,6 +305,10 @@ export class Visualizer {
         // Update selection
         if (!this.modifierKeys.shift && !this.modifierKeys.ctrl) {
             this.selectedNodeIds.clear();
+            // Clear cable selection when nodes are selected via box selection
+            if (window.app && window.app.interactionManager && window.app.interactionManager.selectedCable) {
+                window.app.interactionManager.deselectCable();
+            }
         }
         selectedNodes.forEach(id => {
             this.selectedNodeIds.add(id);
