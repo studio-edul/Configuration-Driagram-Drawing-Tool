@@ -62,7 +62,7 @@
             <a href="#" class="text-lg font-bold tracking-tight text-slate-900 flex items-center gap-2">
                 <i data-lucide="box" class="w-5 h-5"></i>
                 HARDWARE.CONFIG
-                <span class="text-xs font-normal text-slate-500 ml-1">v1.0.1</span>
+                <span id="app-version" class="text-xs font-normal text-slate-500 ml-1"></span>
             </a>
 
         </div>
@@ -404,6 +404,11 @@
     </div>
 
     <!-- Entry Point -->
+    <script type="module">
+        // Load version and set it in the UI
+        import { APP_VERSION } from './src/config/version.js';
+        document.getElementById('app-version').textContent = `v${APP_VERSION}`;
+    </script>
     <script type="module" src="./src/main.js"></script>
     <script>
         // Initialize Lucide Icons after load

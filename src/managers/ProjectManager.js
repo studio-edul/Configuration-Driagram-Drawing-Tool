@@ -1,8 +1,10 @@
+import { APP_VERSION } from '../config/version.js';
+
 export class ProjectManager {
     constructor(dataStore, visualizer) {
         this.dataStore = dataStore;
         this.visualizer = visualizer;
-        this.currentVersion = '1.0.0';
+        this.currentVersion = APP_VERSION;
     }
 
     /**
@@ -92,6 +94,11 @@ export class ProjectManager {
                     
                     // Load data into DataStore
                     this.loadProjectData(migratedData);
+                    
+                    // Save to LocalStorage after import
+                    if (this.dataStore && typeof this.dataStore.saveToLocalStorage === 'function') {
+                        this.dataStore.saveToLocalStorage();
+                    }
                     
                     // Re-render visualizer
                     if (this.visualizer) {

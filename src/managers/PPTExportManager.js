@@ -95,19 +95,6 @@ export class PPTExportManager {
             
             // 1. Initialize PptxGenJS
             const pres = new PptxGenJS();
-            
-            // Debug: Check available shape types
-            if (typeof pres.ShapeType === 'undefined') {
-                console.error('pres.ShapeType is undefined!');
-            } else {
-                // Log available shape types for debugging
-                const shapeTypeKeys = Object.keys(pres.ShapeType).filter(key => 
-                    key.toLowerCase().includes('rect') || key.toLowerCase().includes('round')
-                );
-                if (shapeTypeKeys.length > 0) {
-                    console.log('Available rectangle-related shape types:', shapeTypeKeys);
-                }
-            }
             pres.layout = 'LAYOUT_16x9';
 
             // --- Slide 1: Configuration ---
@@ -152,16 +139,8 @@ export class PPTExportManager {
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
             const fileName = `Hardware_Config_${timestamp}.pptx`;
             
-            // Store connection segments info for grouping after file is written
-            // This will be used to group segments in PPTX XML
-            const allConnectionSegments = {}; // Map<slideIndex, Map<connId, segments>>
-            
-            // Write file - PptxGenJS doesn't support blob output directly
-            // We'll use writeFile and then modify the file if JSZip is available
-            // For now, save file normally - grouping will be implemented via PPTX XML manipulation
             pres.writeFile({ fileName: fileName }).then(() => {
-                console.log('PPT file saved. Note: Connection grouping requires JSZip and PPTX XML manipulation.');
-                console.log('To group connection segments, you may need to manually group them in PowerPoint or implement full XML manipulation.');
+                // File saved successfully
             }).catch(err => {
                 console.error('Error saving PPT file:', err);
             });
@@ -311,11 +290,11 @@ export class PPTExportManager {
                         }
                     };
                     img.onerror = () => {
-                        console.warn('Failed to load background image for PPT export');
+                        // Failed to load background image
                     };
                 }
             } catch (error) {
-                console.warn('Error adding background image to PPT:', error);
+                // Error adding background image
             }
         }
 
@@ -375,7 +354,6 @@ export class PPTExportManager {
                         }
                     });
                 } catch (error) {
-                    console.warn('Failed to calculate connection layout, falling back to individual calculation:', error);
                     // Fallback: render connections individually
                     Object.values(filteredConnections).forEach(conn => {
                         const shapeObjects = this.renderConnection(pres, slide, conn, nodes, mode, transform);
@@ -384,8 +362,6 @@ export class PPTExportManager {
                         }
                     });
                 }
-            } else {
-                console.warn('Visualizer not available for connection rendering');
             }
         }
         
@@ -410,7 +386,6 @@ export class PPTExportManager {
                 if (!node.physicalPos) {
                     // Skip nodes without physicalPos in Installation/Network mode
                     // Do not convert from logicalPos to maintain mode independence
-                    console.warn(`Node ${node.id} missing physicalPos in ${mode} mode, skipping`);
                     return;
                 }
                 const physicalX = node.physicalPos.x ?? 0;
@@ -420,10 +395,6 @@ export class PPTExportManager {
                 w = 16.8 * PX_TO_INCH; // Match web: 16.8x16.8
                 h = 16.8 * PX_TO_INCH;
                 
-                // Debug: Log physicalPos values
-                if (physicalX === 0 && physicalY === 0) {
-                    console.warn(`Node ${node.id} has physicalPos at (0, 0) in ${mode} mode`);
-                }
             } else {
                 // CONFIGURATION mode: calculate block size based on text length with padding
                 const col = node.logicalPos?.col || 0;
@@ -575,7 +546,6 @@ export class PPTExportManager {
         const PX_TO_INCH = 1 / 72;
 
         if (!window.app || !window.app.visualizer) {
-            console.warn('Visualizer not available for connection rendering');
             return [];
         }
 
@@ -584,7 +554,6 @@ export class PPTExportManager {
             points = window.app.visualizer.calculateConnectionPoints(conn, nodes, mode);
             if (!points || !Array.isArray(points) || points.length < 4) return [];
         } catch (error) {
-            console.warn('Failed to calculate connection points:', error);
             return [];
         }
 
@@ -668,50 +637,6 @@ export class PPTExportManager {
         return shapeObjects;
     }
 
-    async groupConnectionsInPPTX(blob, pres, fileName) {
-        // Group connection segments using JSZip
-        // Note: This requires JSZip library to be loaded
-        try {
-            if (typeof JSZip === 'undefined') {
-                console.warn('JSZip not available, saving PPT without grouping');
-                // Fallback: save blob directly
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = fileName;
-                a.click();
-                URL.revokeObjectURL(url);
-                return;
-            }
-
-            // Load PPTX file as zip
-            const zip = await JSZip.loadAsync(blob);
-            
-            // Get all slides and group connection segments
-            // This is complex and requires understanding PPTX XML structure
-            // For now, we'll save the file as-is and log a message
-            console.log('PPT file generated. Connection grouping requires manual operation in PowerPoint or advanced XML manipulation.');
-            
-            // Save the modified file
-            const modifiedBlob = await zip.generateAsync({ type: 'blob' });
-            const url = URL.createObjectURL(modifiedBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
-            a.click();
-            URL.revokeObjectURL(url);
-            
-        } catch (error) {
-            console.error('Error grouping connections:', error);
-            // Fallback: save blob directly
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-    }
 
     renderTechnicalList(pres, slide, nodes, connections, mode, transform) {
         try {
@@ -724,7 +649,6 @@ export class PPTExportManager {
 
             // Validate inputs
             if (!nodes || !connections) {
-                console.warn('Nodes or connections not available for technical list');
                 return;
             }
 

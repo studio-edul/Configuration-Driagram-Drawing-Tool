@@ -1,4 +1,3 @@
-import { AuthManager } from '../managers/AuthManager.js';
 import { ViewManager } from '../managers/ViewManager.js';
 import { RequestManager } from '../managers/RequestManager.js';
 import { BackgroundManager } from '../managers/BackgroundManager.js';
@@ -16,7 +15,6 @@ import { DataStore } from './DataStore.js';
 export class App {
     constructor() {
         this.dataStore = new DataStore();
-        this.authManager = new AuthManager();
         this.viewManager = new ViewManager(this.dataStore);
         this.requestManager = new RequestManager(this.dataStore);
         this.backgroundManager = new BackgroundManager(this.dataStore);
@@ -51,15 +49,27 @@ export class App {
             }
         };
 
-        // Deselect on background click
-        // We need to add this logic to Visualizer or here.
-        // Let's add a simple stage click listener in Visualizer for deselect.
-
         // Initialize project file buttons
         this.initProjectFileButtons();
 
+        // Setup auto-save on page unload
+        this.setupAutoSaveOnUnload();
+
         // Make hardwareListManager accessible globally for checkbox handler
         window.app = this;
+    }
+
+    setupAutoSaveOnUnload() {
+        // Save before page unload
+        window.addEventListener('beforeunload', () => {
+            if (this.dataStore && typeof this.dataStore.saveToLocalStorage === 'function') {
+                // Clear timeout and save immediately
+                if (this.dataStore.autoSaveTimeout) {
+                    clearTimeout(this.dataStore.autoSaveTimeout);
+                }
+                this.dataStore.saveToLocalStorage();
+            }
+        });
     }
 
     initProjectFileButtons() {

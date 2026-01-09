@@ -1,3 +1,5 @@
+import { APP_VERSION } from '../config/version.js';
+
 export class DataStore {
     constructor() {
         this.projectData = {
@@ -16,6 +18,12 @@ export class DataStore {
             requests: {}
         };
         this.listeners = [];
+        this.autoSaveTimeout = null;
+        this.currentVersion = APP_VERSION;
+        this.storageKey = 'hardware-config-project-autosave';
+        
+        // Load from LocalStorage on initialization
+        this.loadFromLocalStorage();
     }
 
     // Get the entire state
@@ -221,5 +229,160 @@ export class DataStore {
 
     notify() {
         this.listeners.forEach(listener => listener(this.projectData));
+        // Auto-save to LocalStorage with debouncing
+        this.autoSaveToLocalStorage();
+    }
+
+    /**
+     * Auto-save to LocalStorage with debouncing (max once per second)
+     */
+    autoSaveToLocalStorage() {
+        // Clear existing timeout
+        if (this.autoSaveTimeout) {
+            clearTimeout(this.autoSaveTimeout);
+        }
+        
+        // Set new timeout (1 second debounce)
+        this.autoSaveTimeout = setTimeout(() => {
+            this.saveToLocalStorage();
+        }, 1000);
+    }
+
+    /**
+     * Save current project data to LocalStorage
+     */
+    saveToLocalStorage() {
+        try {
+            const state = this.projectData;
+            
+            // Create save object with version info (same structure as exportProject)
+            const saveData = {
+                version: this.currentVersion,
+                savedAt: new Date().toISOString(),
+                meta: {
+                    mode: state.meta.mode,
+                    floorPlanImage: state.meta.floorPlanImage || null,
+                    projectName: state.meta.projectName || 'Untitled Project',
+                    hardwareList: state.meta.hardwareList || [],
+                    hardwareListMetadata: state.meta.hardwareListMetadata || {},
+                    bomMetadata: state.meta.bomMetadata || {},
+                    configurationConnectionOrder: state.meta.configurationConnectionOrder || {},
+                    installationConnectionOrder: state.meta.installationConnectionOrder || {},
+                    networkConnectionOrder: state.meta.networkConnectionOrder || {}
+                },
+                nodes: state.nodes || {},
+                networkNodes: state.networkNodes || {},
+                configurationConnections: state.configurationConnections || {},
+                installationConnections: state.installationConnections || {},
+                networkConnections: state.networkConnections || {},
+                requests: state.requests || {}
+            };
+
+            // Save to LocalStorage
+            const jsonString = JSON.stringify(saveData);
+            localStorage.setItem(this.storageKey, jsonString);
+            
+            // Update save status indicator if exists
+            this.updateSaveStatus(true);
+        } catch (error) {
+            console.error('Error saving to LocalStorage:', error);
+            // Handle quota exceeded error
+            if (error.name === 'QuotaExceededError') {
+                console.warn('LocalStorage quota exceeded. Consider clearing old data.');
+            }
+            this.updateSaveStatus(false);
+        }
+    }
+
+    /**
+     * Load project data from LocalStorage
+     */
+    loadFromLocalStorage() {
+        try {
+            const savedData = localStorage.getItem(this.storageKey);
+            if (!savedData) {
+                return false; // No saved data
+            }
+
+            const data = JSON.parse(savedData);
+            
+            // Validate data structure
+            if (!data || !data.meta || typeof data.meta !== 'object') {
+                console.warn('Invalid saved data format, skipping load');
+                return false;
+            }
+
+            // Load data into projectData (without triggering notify to avoid infinite loop)
+            this.projectData.meta = {
+                mode: data.meta.mode || 'CONFIGURATION',
+                floorPlanImage: data.meta.floorPlanImage || null,
+                projectName: data.meta.projectName || 'The First Look 2026',
+                hardwareList: data.meta.hardwareList || [],
+                hardwareListMetadata: data.meta.hardwareListMetadata || {},
+                bomMetadata: data.meta.bomMetadata || {},
+                configurationConnectionOrder: data.meta.configurationConnectionOrder || {},
+                installationConnectionOrder: data.meta.installationConnectionOrder || {},
+                networkConnectionOrder: data.meta.networkConnectionOrder || {}
+            };
+
+            this.projectData.nodes = data.nodes || {};
+            this.projectData.networkNodes = data.networkNodes || {};
+            this.projectData.configurationConnections = data.configurationConnections || {};
+            this.projectData.installationConnections = data.installationConnections || {};
+            this.projectData.networkConnections = data.networkConnections || {};
+            this.projectData.requests = data.requests || {};
+
+            // Notify listeners after loading (but only once)
+            setTimeout(() => {
+                this.notify();
+            }, 0);
+
+            return true;
+        } catch (error) {
+            console.error('Error loading from LocalStorage:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Clear saved data from LocalStorage
+     */
+    clearLocalStorage() {
+        try {
+            localStorage.removeItem(this.storageKey);
+            this.updateSaveStatus(false);
+        } catch (error) {
+            console.error('Error clearing LocalStorage:', error);
+        }
+    }
+
+    /**
+     * Update save status indicator in UI
+     */
+    updateSaveStatus(success) {
+        // Try to find or create save status indicator
+        let statusIndicator = document.getElementById('autosave-status');
+        if (!statusIndicator) {
+            // Create status indicator if it doesn't exist
+            statusIndicator = document.createElement('div');
+            statusIndicator.id = 'autosave-status';
+            statusIndicator.className = 'fixed bottom-4 right-4 text-xs text-slate-500 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 z-50';
+            document.body.appendChild(statusIndicator);
+        }
+
+        if (success) {
+            statusIndicator.textContent = '자동 저장됨';
+            statusIndicator.className = 'fixed bottom-4 right-4 text-xs text-green-600 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-green-200 z-50';
+            // Hide after 2 seconds
+            setTimeout(() => {
+                if (statusIndicator) {
+                    statusIndicator.textContent = '';
+                    statusIndicator.className = 'fixed bottom-4 right-4 text-xs text-slate-500 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 z-50';
+                }
+            }, 2000);
+        } else {
+            statusIndicator.textContent = '저장 실패';
+            statusIndicator.className = 'fixed bottom-4 right-4 text-xs text-red-600 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-red-200 z-50';
+        }
     }
 }
