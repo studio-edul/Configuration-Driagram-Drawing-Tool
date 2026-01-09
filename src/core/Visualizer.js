@@ -14,6 +14,7 @@ export class Visualizer {
         this.nodeGroups = {}; // Store node groups for highlighting
         this.connectionLines = {}; // Map<connectionId, Konva.Line> - Store connection line objects
         this.connectionBendHandles = {}; // Map<connectionId, Konva.Circle> - bend handle (selected connections)
+        this.connectionEndHandles = {}; // Map<connectionId, { start: Konva.Circle, end: Konva.Circle }> - endpoint handles for Installation mode
         this.connectionPortOffsets = {}; // Map<connId, { start, end }> - cached endpoints for bend editing
 
         // Box selection
@@ -309,6 +310,9 @@ export class Visualizer {
             if (window.app && window.app.interactionManager && window.app.interactionManager.selectedCable) {
                 window.app.interactionManager.deselectCable();
             }
+            // Clear connection selection (cables) when nodes are selected
+            this.selectedConnectionIds.clear();
+            this.updateConnectionSelection();
         }
         selectedNodes.forEach(id => {
             this.selectedNodeIds.add(id);
@@ -859,7 +863,16 @@ export class Visualizer {
                     // Store initial bend positions for "internal" connections
                     // Internal means both source and target are selected
                     const data = this.dataStore.getState();
-                    const targetConnections = mode === 'NETWORK' ? data.networkConnections : data.connections;
+                    let targetConnections;
+                    if (mode === 'NETWORK') {
+                        targetConnections = data.networkConnections || {};
+                    } else if (mode === 'CONFIGURATION') {
+                        targetConnections = data.configurationConnections || {};
+                    } else if (mode === 'INSTALLATION') {
+                        targetConnections = data.installationConnections || {};
+                    } else {
+                        targetConnections = {};
+                    }
 
                     this.tempBendOverrides = {}; // Clear previous Overrides
 
@@ -920,7 +933,16 @@ export class Visualizer {
 
                     // Update internal connections bend points relative to drag
                     const data = this.dataStore.getState();
-                    const targetConnections = mode === 'NETWORK' ? data.networkConnections : data.connections;
+                    let targetConnections;
+                    if (mode === 'NETWORK') {
+                        targetConnections = data.networkConnections || {};
+                    } else if (mode === 'CONFIGURATION') {
+                        targetConnections = data.configurationConnections || {};
+                    } else if (mode === 'INSTALLATION') {
+                        targetConnections = data.installationConnections || {};
+                    } else {
+                        targetConnections = {};
+                    }
 
                     Object.values(targetConnections).forEach(conn => {
                         // Check if we have a start value for this connection (implies it's internal and we are tracking it)
@@ -938,7 +960,16 @@ export class Visualizer {
                 // Update connections during drag (live preview)
                 const data = this.dataStore.getState();
                 const targetNodes = mode === 'NETWORK' ? data.networkNodes : data.nodes;
-                const targetConnections = mode === 'NETWORK' ? data.networkConnections : data.connections;
+                let targetConnections;
+                if (mode === 'NETWORK') {
+                    targetConnections = data.networkConnections || {};
+                } else if (mode === 'CONFIGURATION') {
+                    targetConnections = data.configurationConnections || {};
+                } else if (mode === 'INSTALLATION') {
+                    targetConnections = data.installationConnections || {};
+                } else {
+                    targetConnections = {};
+                }
                 this.renderConnections(targetConnections, targetNodes, mode);
             });
 
@@ -1005,7 +1036,21 @@ export class Visualizer {
                     });
                     this.tempBendOverrides = {};
 
-                    // Redraw layer after snapping all nodes
+                    // Redraw layer after snapping all nodes and re-render connections
+                    const data = this.dataStore.getState();
+                    const targetNodes = mode === 'NETWORK' ? data.networkNodes : data.nodes;
+                    let targetConnections;
+                    if (mode === 'NETWORK') {
+                        targetConnections = data.networkConnections || {};
+                    } else if (mode === 'CONFIGURATION') {
+                        targetConnections = data.configurationConnections || {};
+                    } else if (mode === 'INSTALLATION') {
+                        targetConnections = data.installationConnections || {};
+                    } else {
+                        targetConnections = {};
+                    }
+                    this.renderConnections(targetConnections, targetNodes, mode);
+                    
                     if (mode === 'CONFIGURATION') {
                         this.layer.batchDraw();
                     }
@@ -1027,6 +1072,10 @@ export class Visualizer {
                         this.dataStore.updateNode(node.id, {
                             logicalPos: { col, row }
                         });
+                        // Re-render connections after node position update
+                        const data = this.dataStore.getState();
+                        const targetConnections = data.configurationConnections || {};
+                        this.renderConnections(targetConnections, data.nodes, mode);
                         // Redraw layer after snapping
                         this.layer.batchDraw();
                     } else {
@@ -1037,6 +1086,11 @@ export class Visualizer {
                                 y: snappedY
                             }
                         });
+                        // Re-render connections after node position update
+                        const data = this.dataStore.getState();
+                        const targetNodes = mode === 'NETWORK' ? data.networkNodes : data.nodes;
+                        const targetConnections = mode === 'NETWORK' ? data.networkConnections : data.installationConnections || {};
+                        this.renderConnections(targetConnections, targetNodes, mode);
                     }
                 }
             });
@@ -1165,7 +1219,78 @@ export class Visualizer {
         // 1. Prepare Layout: Calculate start/end points for all connections with port distribution
         const result = this.calculateConnectionLayout(connections, nodes, mode);
         const layout = result.layout || result;
-        this.connectionPortOffsets = result.portOffsets || {};
+        
+        // Merge new portOffsets with existing ones to preserve user-modified endpoints
+        // For Configuration mode, only preserve left/right sides (not top/bottom)
+        const newPortOffsets = result.portOffsets || {};
+        Object.keys(newPortOffsets).forEach(connId => {
+            if (!this.connectionPortOffsets[connId]) {
+                this.connectionPortOffsets[connId] = {};
+            }
+            
+            // For Configuration mode, validate sides are left/right only
+            // For Installation mode, always use new port offsets to ensure correct positions
+            const isValidSideForMode = (side) => {
+                if (mode === 'CONFIGURATION') {
+                    return side === 'left' || side === 'right';
+                }
+                return true; // Installation mode accepts all sides
+            };
+            
+            if (mode === 'INSTALLATION') {
+                // In Installation mode, preserve manually set endpoints but update with new calculated values if not set
+                // This ensures end handles use Installation mode's connection layout, not Configuration mode's
+                if (newPortOffsets[connId].start) {
+                    if (!this.connectionPortOffsets[connId]) {
+                        this.connectionPortOffsets[connId] = {};
+                    }
+                    // Only update if not manually set by user (preserve user modifications)
+                    if (!this.connectionPortOffsets[connId].start || 
+                        !this.connectionPortOffsets[connId].start._manuallySet) {
+                        this.connectionPortOffsets[connId].start = { ...newPortOffsets[connId].start };
+                    }
+                }
+                if (newPortOffsets[connId].end) {
+                    if (!this.connectionPortOffsets[connId]) {
+                        this.connectionPortOffsets[connId] = {};
+                    }
+                    // Only update if not manually set by user (preserve user modifications)
+                    if (!this.connectionPortOffsets[connId].end || 
+                        !this.connectionPortOffsets[connId].end._manuallySet) {
+                        this.connectionPortOffsets[connId].end = { ...newPortOffsets[connId].end };
+                    }
+                }
+            } else {
+                // Configuration mode: preserve existing start/end if they exist and are valid for this mode
+                if (newPortOffsets[connId].start) {
+                    if (!this.connectionPortOffsets[connId].start) {
+                        // Only use new value if it's valid for this mode
+                        if (isValidSideForMode(newPortOffsets[connId].start.side)) {
+                            this.connectionPortOffsets[connId].start = newPortOffsets[connId].start;
+                        }
+                    } else if (isValidSideForMode(newPortOffsets[connId].start.side)) {
+                        // Update side information if not manually set
+                        if (!this.connectionPortOffsets[connId].start.side) {
+                            this.connectionPortOffsets[connId].start.side = newPortOffsets[connId].start.side;
+                        }
+                    }
+                }
+                
+                if (newPortOffsets[connId].end) {
+                    if (!this.connectionPortOffsets[connId].end) {
+                        // Only use new value if it's valid for this mode
+                        if (isValidSideForMode(newPortOffsets[connId].end.side)) {
+                            this.connectionPortOffsets[connId].end = newPortOffsets[connId].end;
+                        }
+                    } else if (isValidSideForMode(newPortOffsets[connId].end.side)) {
+                        // Update side information if not manually set
+                        if (!this.connectionPortOffsets[connId].end.side) {
+                            this.connectionPortOffsets[connId].end.side = newPortOffsets[connId].end.side;
+                        }
+                    }
+                }
+            }
+        });
 
         // Track active connection IDs to remove stale ones
         const activeIds = new Set();
@@ -1185,6 +1310,7 @@ export class Visualizer {
                     line.points(points);
                     line.stroke(lineColor);
                     line.dash(conn.category === 'Cable' && conn.type === 'Wireless' ? [10, 10] : []);
+                    line.hitStrokeWidth(10); // Update click detection area
                     line.shadowColor(isSelected ? lineColor : null);
                     line.shadowBlur(isSelected ? 8 : 0);
                     line.shadowOpacity(isSelected ? 0.8 : 0);
@@ -1194,7 +1320,7 @@ export class Visualizer {
                         points: points,
                         stroke: lineColor,
                         strokeWidth: 2,
-                        hitStrokeWidth: 20, // Wider click detection area (20px)
+                        hitStrokeWidth: 10, // Click detection area (10px)
                         lineCap: 'round',
                         lineJoin: 'round',
                         dash: conn.category === 'Cable' && conn.type === 'Wireless' ? [10, 10] : [],
@@ -1224,11 +1350,22 @@ export class Visualizer {
             if (!activeIds.has(connId)) {
                 this.connectionLines[connId].destroy();
                 delete this.connectionLines[connId];
+                // Also cleanup end handles
+                if (this.connectionEndHandles[connId]) {
+                    const handles = this.connectionEndHandles[connId];
+                    if (handles.start) handles.start.destroy();
+                    if (handles.end) handles.end.destroy();
+                    delete this.connectionEndHandles[connId];
+                }
             }
         });
 
-        // 4. Update bend handles
+        // 4. Update bend handles and end handles
         this.updateConnectionSelection();
+        this.updateConnectionBendHandles();
+        if (mode === 'INSTALLATION') {
+            this.updateConnectionEndHandles();
+        }
     }
 
     calculateConnectionLayout(connections, nodes, mode) {
@@ -1252,14 +1389,76 @@ export class Visualizer {
             nodePorts[nodeId] = { top: [], bottom: [], left: [], right: [] };
         });
 
-        Object.values(connections).forEach(conn => {
+        // Get connection order from metadata to ensure consistent processing order
+        const data = this.dataStore.getState();
+        const orderKey = mode === 'CONFIGURATION' ? 'configurationConnectionOrder' : 
+                        mode === 'INSTALLATION' ? 'installationConnectionOrder' : 
+                        'networkConnectionOrder';
+        const connectionOrder = data.meta[orderKey] || {};
+        
+        // Collect all connection IDs in order (if order exists) or use object order
+        const orderedConnIds = [];
+        const allConnIds = Object.keys(connections);
+        
+        // First, add connections that have order information (in order)
+        Object.keys(connectionOrder).forEach(nodeId => {
+            Object.keys(connectionOrder[nodeId] || {}).forEach(side => {
+                const sideOrder = connectionOrder[nodeId][side] || [];
+                sideOrder.forEach(connId => {
+                    if (connections[connId] && !orderedConnIds.includes(connId)) {
+                        orderedConnIds.push(connId);
+                    }
+                });
+            });
+        });
+        
+        // Then add any remaining connections that don't have order info
+        allConnIds.forEach(connId => {
+            if (!orderedConnIds.includes(connId)) {
+                orderedConnIds.push(connId);
+            }
+        });
+
+        // Process connections in order
+        orderedConnIds.forEach(connId => {
+            const conn = connections[connId];
+            if (!conn) return;
             const sourceNode = nodes[conn.source];
             const targetNode = nodes[conn.target];
             if (!sourceNode || !targetNode) return;
 
             const sourceRect = this.getNodeRect(sourceNode, mode);
             const targetRect = this.getNodeRect(targetNode, mode);
-            const { sourceSide, targetSide } = this.determineConnectionSides(sourceRect, targetRect);
+            
+            // Check if we have stored side information from port offsets
+            // For Configuration mode, only use stored sides if they are left/right (not top/bottom)
+            const storedOffsets = this.connectionPortOffsets?.[conn.id];
+            let sourceSide, targetSide;
+            
+            if (storedOffsets && storedOffsets.start && storedOffsets.end && storedOffsets.start.side && storedOffsets.end.side) {
+                // For Configuration mode, only accept left/right sides
+                if (mode === 'CONFIGURATION') {
+                    const isValidConfigSide = (side) => side === 'left' || side === 'right';
+                    if (isValidConfigSide(storedOffsets.start.side) && isValidConfigSide(storedOffsets.end.side)) {
+                        sourceSide = storedOffsets.start.side;
+                        targetSide = storedOffsets.end.side;
+                    } else {
+                        // Invalid sides for Configuration mode, recalculate
+                        const sides = this.determineConnectionSides(sourceRect, targetRect, mode);
+                        sourceSide = sides.sourceSide;
+                        targetSide = sides.targetSide;
+                    }
+                } else {
+                    // Installation mode: use stored sides as-is
+                    sourceSide = storedOffsets.start.side;
+                    targetSide = storedOffsets.end.side;
+                }
+            } else {
+                // Calculate sides automatically
+                const sides = this.determineConnectionSides(sourceRect, targetRect, mode);
+                sourceSide = sides.sourceSide;
+                targetSide = sides.targetSide;
+            }
 
             if (nodePorts[conn.source]) nodePorts[conn.source][sourceSide].push({ conn, isSource: true, otherRect: targetRect });
             if (nodePorts[conn.target]) nodePorts[conn.target][targetSide].push({ conn, isSource: false, otherRect: sourceRect });
@@ -1273,17 +1472,25 @@ export class Visualizer {
             const sides = nodePorts[nodeId];
 
             Object.keys(sides).forEach(side => {
+                // Configuration mode: skip top/bottom sides
+                if (mode === 'CONFIGURATION' && (side === 'top' || side === 'bottom')) {
+                    return;
+                }
+                
                 let connections = sides[side];
                 if (connections.length === 0) return;
 
                 // Sort connections by stored order if available (mode-specific)
-                const data = this.dataStore.getState();
+                // Always get fresh state to ensure we have the latest connection order
+                const freshData = this.dataStore.getState();
                 const orderKey = mode === 'CONFIGURATION' ? 'configurationConnectionOrder' : 
                                 mode === 'INSTALLATION' ? 'installationConnectionOrder' : 
                                 'networkConnectionOrder';
-                const connectionOrder = data.meta[orderKey] || {};
+                const connectionOrder = freshData.meta[orderKey] || {};
                 const nodeOrder = connectionOrder[nodeId] || {};
                 const sideOrder = nodeOrder[side] || [];
+                
+                console.log('[calculateConnectionLayoutLegacyWithPorts] Node:', nodeId, 'Side:', side, 'Order:', sideOrder);
                 
                 if (sideOrder.length > 0) {
                     // Sort connections according to stored order
@@ -1291,70 +1498,166 @@ export class Visualizer {
                     sideOrder.forEach((connId, index) => {
                         orderMap.set(connId, index);
                     });
+                    const beforeSort = connections.map(c => c.conn.id);
                     connections = connections.sort((a, b) => {
                         const orderA = orderMap.has(a.conn.id) ? orderMap.get(a.conn.id) : 9999;
                         const orderB = orderMap.has(b.conn.id) ? orderMap.get(b.conn.id) : 9999;
                         return orderA - orderB;
                     });
+                    const afterSort = connections.map(c => c.conn.id);
+                    console.log('[calculateConnectionLayoutLegacyWithPorts] Sorted connections:', beforeSort, '->', afterSort);
                 } else {
-                    // Default: sort by target Y position (top to bottom)
-                    connections = connections.sort((a, b) => {
-                        const aY = a.otherRect ? a.otherRect.y : 0;
-                        const bY = b.otherRect ? b.otherRect.y : 0;
-                        return aY - bY;
-                    });
+                    // Default sorting
+                    if (side === 'top' || side === 'bottom') {
+                        // For vertical sides: sort by target X position (left to right)
+                        connections = connections.sort((a, b) => {
+                            const aX = a.otherRect ? a.otherRect.x : 0;
+                            const bX = b.otherRect ? b.otherRect.x : 0;
+                            return aX - bX;
+                        });
+                    } else {
+                        // For horizontal sides: sort by target Y position (top to bottom)
+                        connections = connections.sort((a, b) => {
+                            const aY = a.otherRect ? a.otherRect.y : 0;
+                            const bY = b.otherRect ? b.otherRect.y : 0;
+                            return aY - bY;
+                        });
+                    }
                 }
+                
+                // Update nodePorts with sorted order so subsequent processing uses correct order
+                sides[side] = connections;
 
                 const portCount = connections.length;
-                const spacing = 10;
-                const totalHeight = (portCount - 1) * spacing;
-                let startY = rect.y + (rect.height / 2) - (totalHeight / 2);
-
-                connections.forEach((connInfo, index) => {
-                    const conn = connInfo.conn;
-                    const isSource = connInfo.isSource;
-                    const portY = startY + (index * spacing);
-
-                    let portX, portY_final;
-                    if (side === 'left') {
-                        portX = rect.x;
-                        portY_final = portY;
-                    } else if (side === 'right') {
-                        portX = rect.x + rect.width;
-                        portY_final = portY;
-                    } else if (side === 'top') {
-                        portX = rect.x + (rect.width / 2); // Center for now
-                        portY_final = rect.y;
-                    } else { // bottom
-                        portX = rect.x + (rect.width / 2);
-                        portY_final = rect.y + rect.height;
+                // Installation mode: use 1/2 spacing (5px), Configuration mode: use full spacing (10px)
+                const spacing = mode === 'INSTALLATION' ? 5 : 10;
+                
+                let portX, portY_final;
+                
+                if (side === 'left' || side === 'right') {
+                    // Horizontal sides: distribute vertically
+                    const totalHeight = (portCount - 1) * spacing;
+                    let startY = rect.y + (rect.height / 2) - (totalHeight / 2);
+                    
+                    connections.forEach((connInfo, index) => {
+                        const conn = connInfo.conn;
+                        const isSource = connInfo.isSource;
+                        const endpointKey = isSource ? 'start' : 'end';
+                        
+                        // For Configuration mode, always recalculate port positions based on sorted order
+                        // For Installation mode, preserve manually set endpoints but recalculate if order changed
+                        const existingOffsets = this.connectionPortOffsets?.[conn.id];
+                        let useExisting = false;
+                        
+                        if (mode === 'INSTALLATION' && existingOffsets?.[endpointKey] && existingOffsets[endpointKey].side === side) {
+                            // In Installation mode, check if this endpoint was manually set by user
+                            // If the side matches and position seems manually adjusted, preserve it
+                            // But if order changed, we should recalculate based on new order
+                            // For now, always recalculate in Installation mode when order is involved
+                            // User can manually adjust endpoints after order is set
+                            useExisting = false; // Always recalculate to reflect order changes
+                        }
+                        
+                        // Calculate new endpoint based on sorted order
+                        // The index here reflects the sorted order, so port positions will be correct
+                        const portY = startY + (index * spacing);
+                        
+                        if (side === 'left') {
+                            portX = rect.x;
+                            portY_final = portY;
+                        } else { // right
+                            portX = rect.x + rect.width;
+                            portY_final = portY;
+                        }
+                        
+                        if (!portOffsets[conn.id]) portOffsets[conn.id] = {};
+                        portOffsets[conn.id][endpointKey] = { x: portX, y: portY_final, side };
+                        console.log('[calculateConnectionLayoutLegacyWithPorts] Calculated port for', conn.id, 'at index', index, 'y:', portY_final);
+                    });
+                } else {
+                    // Vertical sides (top/bottom): only for Installation mode
+                    // Configuration mode should never have top/bottom connections
+                    if (mode === 'INSTALLATION') {
+                        const totalWidth = (portCount - 1) * spacing;
+                        let startX = rect.x + (rect.width / 2) - (totalWidth / 2);
+                        
+                        connections.forEach((connInfo, index) => {
+                            const conn = connInfo.conn;
+                            const isSource = connInfo.isSource;
+                            const endpointKey = isSource ? 'start' : 'end';
+                            
+                            // Always recalculate port positions based on sorted order
+                            // This ensures order adjustments are properly reflected
+                            // User can manually adjust endpoints after order is set via drag
+                            const portX_pos = startX + (index * spacing);
+                            
+                            if (side === 'top') {
+                                portX = portX_pos;
+                                portY_final = rect.y;
+                            } else { // bottom
+                                portX = portX_pos;
+                                portY_final = rect.y + rect.height;
+                            }
+                            
+                            if (!portOffsets[conn.id]) portOffsets[conn.id] = {};
+                            portOffsets[conn.id][endpointKey] = { x: portX, y: portY_final, side };
+                            console.log('[calculateConnectionLayoutLegacyWithPorts] Calculated vertical port for', conn.id, 'at index', index, 'x:', portX_pos, 'side:', side);
+                        });
                     }
-
-                    if (!portOffsets[conn.id]) portOffsets[conn.id] = {};
-                    if (isSource) {
-                        portOffsets[conn.id].start = { x: portX, y: portY_final, side };
-                    } else {
-                        portOffsets[conn.id].end = { x: portX, y: portY_final, side };
-                    }
-                });
+                    // Configuration mode: top/bottom connections are not supported, so skip them
+                    // (They are already filtered out earlier in the code)
+                }
             });
         });
 
         Object.values(connections).forEach(conn => {
             const offsets = portOffsets[conn.id];
             if (offsets?.start && offsets?.end) {
-                // Check if there is a stored bendX override
-                const bendX = this.getConnectionBendX(conn, mode, offsets);
-
                 let points;
-                if (typeof bendX === 'number') {
-                    // Use stored bendX (now converted to absolute coordinate)
-                    points = this.buildBendOverrideRoute(offsets.start, offsets.end, bendX);
+                
+                // Installation mode: handle vertical connections (top/bottom) differently
+                if (mode === 'INSTALLATION') {
+                    // Check if this is a vertical connection (top/bottom)
+                    const isVerticalConnection = (offsets.start.side === 'top' || offsets.start.side === 'bottom') || 
+                                               (offsets.end.side === 'top' || offsets.end.side === 'bottom');
+                    
+                    if (isVerticalConnection) {
+                        // For vertical connections, check for stored bendY
+                        const bendY = this.getConnectionBendY(conn, mode, offsets);
+                        if (typeof bendY === 'number') {
+                            // Use stored bendY
+                            points = this.buildBendOverrideRouteVertical(offsets.start, offsets.end, bendY);
+                        } else {
+                            // Calculate default route for vertical connections
+                            points = this.calculateManhattanRouteVertical(offsets.start, offsets.end);
+                            // Only snap internal segments if using default routing
+                            points = this.snapOrthogonalInternalSegmentsToHalfGridVertical(points);
+                        }
+                    } else {
+                        // For horizontal connections, check for stored bendX
+                        const bendX = this.getConnectionBendX(conn, mode, offsets);
+                        if (typeof bendX === 'number') {
+                            // Use stored bendX (now converted to absolute coordinate)
+                            points = this.buildBendOverrideRoute(offsets.start, offsets.end, bendX);
+                        } else {
+                            // Calculate default route
+                            points = this.calculateManhattanRoute(offsets.start, offsets.end);
+                            // Only snap internal segments if using default routing (custom routing is already snapped)
+                            points = this.snapOrthogonalInternalSegmentsToHalfGrid(points);
+                        }
+                    }
                 } else {
-                    // Calculate default route
-                    points = this.calculateManhattanRoute(offsets.start, offsets.end);
-                    // Only snap internal segments if using default routing (custom routing is already snapped)
-                    points = this.snapOrthogonalInternalSegmentsToHalfGrid(points);
+                    // Configuration mode: use original logic (only horizontal connections, bendX only)
+                    const bendX = this.getConnectionBendX(conn, mode, offsets);
+                    if (typeof bendX === 'number') {
+                        // Use stored bendX (now converted to absolute coordinate)
+                        points = this.buildBendOverrideRoute(offsets.start, offsets.end, bendX);
+                    } else {
+                        // Calculate default route
+                        points = this.calculateManhattanRoute(offsets.start, offsets.end);
+                        // Only snap internal segments if using default routing (custom routing is already snapped)
+                        points = this.snapOrthogonalInternalSegmentsToHalfGrid(points);
+                    }
                 }
 
                 layout[conn.id] = points;
@@ -1387,7 +1690,14 @@ export class Visualizer {
         }
     }
 
-    determineConnectionSides(sourceRect, targetRect) {
+    determineConnectionSides(sourceRect, targetRect, mode = 'CONFIGURATION') {
+        // Installation mode: consider all 4 sides (top, bottom, left, right)
+        // Configuration mode: only consider left and right sides
+        if (mode === 'INSTALLATION') {
+            return this.determineConnectionSidesInstallation(sourceRect, targetRect);
+        }
+
+        // Configuration mode: original logic (left/right only)
         // Calculate horizontal gap between blocks
         const sourceRight = sourceRect.x + sourceRect.width;
         const targetRight = targetRect.x + targetRect.width;
@@ -1424,6 +1734,117 @@ export class Visualizer {
             return { sourceSide: 'right', targetSide: 'left' };
         } else { // Target is to the left
             return { sourceSide: 'left', targetSide: 'right' };
+        }
+    }
+
+    /**
+     * Determine connection sides for Installation mode (considers all 4 sides)
+     * Chooses optimal sides based on node positions
+     */
+    determineConnectionSidesInstallation(sourceRect, targetRect) {
+        const sourceCenterX = sourceRect.x + sourceRect.width / 2;
+        const sourceCenterY = sourceRect.y + sourceRect.height / 2;
+        const targetCenterX = targetRect.x + targetRect.width / 2;
+        const targetCenterY = targetRect.y + targetRect.height / 2;
+
+        const dx = targetCenterX - sourceCenterX;
+        const dy = targetCenterY - sourceCenterY;
+        const absDx = Math.abs(dx);
+        const absDy = Math.abs(dy);
+
+        // Calculate overlap and gaps to determine best connection sides
+        const sourceRight = sourceRect.x + sourceRect.width;
+        const sourceBottom = sourceRect.y + sourceRect.height;
+        const targetRight = targetRect.x + targetRect.width;
+        const targetBottom = targetRect.y + targetRect.height;
+
+        // Horizontal gap: positive if blocks are separated horizontally
+        const horizontalGap = Math.max(0, targetRect.x - sourceRight, sourceRect.x - targetRight);
+        // Vertical gap: positive if blocks are separated vertically
+        const verticalGap = Math.max(0, targetRect.y - sourceBottom, sourceRect.y - targetBottom);
+
+        // Check if blocks overlap or are very close
+        const horizontalOverlap = horizontalGap === 0 && (targetRect.x < sourceRight && sourceRect.x < targetRight);
+        const verticalOverlap = verticalGap === 0 && (targetRect.y < sourceBottom && sourceRect.y < targetBottom);
+
+        // If blocks overlap or are very close, prefer the direction with less overlap
+        if (horizontalOverlap && verticalOverlap) {
+            // Both overlap: choose based on which dimension has less overlap
+            const horizontalOverlapAmount = Math.min(sourceRight - targetRect.x, targetRight - sourceRect.x);
+            const verticalOverlapAmount = Math.min(sourceBottom - targetRect.y, targetBottom - sourceRect.y);
+            
+            if (horizontalOverlapAmount < verticalOverlapAmount) {
+                // Less horizontal overlap, prefer vertical connection
+                if (dy > 0) {
+                    return { sourceSide: 'bottom', targetSide: 'top' };
+                } else {
+                    return { sourceSide: 'top', targetSide: 'bottom' };
+                }
+            } else {
+                // Less vertical overlap, prefer horizontal connection
+                if (dx > 0) {
+                    return { sourceSide: 'right', targetSide: 'left' };
+                } else {
+                    return { sourceSide: 'left', targetSide: 'right' };
+                }
+            }
+        }
+
+        // If blocks are separated, consider both gaps
+        // Use a threshold: if one gap is significantly smaller, prefer that direction
+        const GAP_THRESHOLD_RATIO = 0.7; // If one gap is less than 70% of the other, prefer it
+        
+        if (horizontalGap > 0 && verticalGap > 0) {
+            // Both separated: compare gaps
+            if (verticalGap < horizontalGap * GAP_THRESHOLD_RATIO) {
+                // Vertical gap is significantly smaller
+                if (dy > 0) {
+                    return { sourceSide: 'bottom', targetSide: 'top' };
+                } else {
+                    return { sourceSide: 'top', targetSide: 'bottom' };
+                }
+            } else if (horizontalGap < verticalGap * GAP_THRESHOLD_RATIO) {
+                // Horizontal gap is significantly smaller
+                if (dx > 0) {
+                    return { sourceSide: 'right', targetSide: 'left' };
+                } else {
+                    return { sourceSide: 'left', targetSide: 'right' };
+                }
+            }
+        } else if (horizontalGap > 0 && verticalGap === 0) {
+            // Only horizontally separated
+            if (dx > 0) {
+                return { sourceSide: 'right', targetSide: 'left' };
+            } else {
+                return { sourceSide: 'left', targetSide: 'right' };
+            }
+        } else if (verticalGap > 0 && horizontalGap === 0) {
+            // Only vertically separated
+            if (dy > 0) {
+                return { sourceSide: 'bottom', targetSide: 'top' };
+            } else {
+                return { sourceSide: 'top', targetSide: 'bottom' };
+            }
+        }
+
+        // Fallback: use distance-based logic with a bias towards vertical connections
+        // This helps ensure vertical connections are chosen when distances are similar
+        const DISTANCE_BIAS = 1.2; // Prefer vertical if absDy * BIAS > absDx
+        
+        if (absDy * DISTANCE_BIAS > absDx) {
+            // Vertical connection is preferred
+            if (dy > 0) {
+                return { sourceSide: 'bottom', targetSide: 'top' };
+            } else {
+                return { sourceSide: 'top', targetSide: 'bottom' };
+            }
+        } else {
+            // Horizontal connection is preferred
+            if (dx > 0) {
+                return { sourceSide: 'right', targetSide: 'left' };
+            } else {
+                return { sourceSide: 'left', targetSide: 'right' };
+            }
         }
     }
 
@@ -1498,6 +1919,62 @@ export class Visualizer {
         return points;
     }
 
+    calculateManhattanRouteVertical(start, end, buffer = 20) {
+        // For vertical connections (top/bottom), create a simple 2-bend route
+        const points = [start.x, start.y];
+
+        let p1 = { ...start };
+        let p2 = { ...end };
+
+        // Apply buffer based on side
+        switch (start.side) {
+            case 'top': p1.y -= buffer; break;
+            case 'bottom': p1.y += buffer; break;
+            case 'left': p1.x -= buffer; break;
+            case 'right': p1.x += buffer; break;
+        }
+
+        switch (end.side) {
+            case 'top': p2.y -= buffer; break;
+            case 'bottom': p2.y += buffer; break;
+            case 'left': p2.x -= buffer; break;
+            case 'right': p2.x += buffer; break;
+        }
+
+        // For vertical connections, calculate midpoint Y for the horizontal segment
+        const midY = (p1.y + p2.y) / 2;
+
+        // Create 2-bend route: start -> vertical -> horizontal -> vertical -> end
+        points.push(p1.x, p1.y);  // Buffer point from start
+        points.push(p1.x, midY); // First bend: vertical to horizontal
+        points.push(p2.x, midY); // Second bend: horizontal to vertical
+        points.push(p2.x, p2.y); // Buffer point to end
+        points.push(end.x, end.y); // End point
+
+        return points;
+    }
+
+    snapOrthogonalInternalSegmentsToHalfGridVertical(points) {
+        if (!points || points.length < 10) return points; // Need at least 5 points for vertical route
+
+        const snapped = points.slice();
+
+        // For vertical route: [start, p1, bend1, bend2, p2, end]
+        // We want to snap the horizontal segment (between bend1 and bend2) to half-grid Y
+        // bend1 is at index 4,5 (p1.x, midY)
+        // bend2 is at index 6,7 (p2.x, midY)
+        // We want to snap midY to half-grid
+
+        if (snapped.length >= 8) {
+            const midY = snapped[5]; // Y coordinate of the horizontal segment
+            const snappedY = this.snapToHalfGridY(midY);
+            snapped[5] = snappedY; // Update first bend Y
+            snapped[7] = snappedY; // Update second bend Y
+        }
+
+        return snapped;
+    }
+
     /**
      * Snap ONLY the middle vertical segment (between 2nd and 3rd bends) to half-grid (12px).
      * - Applies ONLY to connections that have exactly 2 bends (horizontal->vertical->horizontal).
@@ -1549,6 +2026,11 @@ export class Visualizer {
         }
 
         return this.simplifyOrthogonalPoints(snapped);
+    }
+
+    snapToHalfGridY(y) {
+        // Grid = 24px -> quarter-grid = 6px (same as X axis)
+        return Math.round(y / 6) * 6;
     }
 
     snapToHalfGridX(x) {
@@ -1676,6 +2158,9 @@ export class Visualizer {
         });
 
         this.updateConnectionBendHandles();
+        if (mode === 'INSTALLATION') {
+            this.updateConnectionEndHandles();
+        }
         this.layer.batchDraw();
     }
 
@@ -1690,6 +2175,26 @@ export class Visualizer {
                 delete this.connectionBendHandles[connId];
             }
         });
+
+        // Remove end handles that should not exist (for Installation mode)
+        if (mode === 'INSTALLATION') {
+            Object.keys(this.connectionEndHandles).forEach(connId => {
+                if (!this.selectedConnectionIds.has(connId) || !this.connectionLines[connId]) {
+                    const handles = this.connectionEndHandles[connId];
+                    if (handles && handles.start) handles.start.destroy();
+                    if (handles && handles.end) handles.end.destroy();
+                    delete this.connectionEndHandles[connId];
+                }
+            });
+        } else {
+            // Remove all end handles if not in Installation mode
+            Object.keys(this.connectionEndHandles).forEach(connId => {
+                const handles = this.connectionEndHandles[connId];
+                if (handles && handles.start) handles.start.destroy();
+                if (handles && handles.end) handles.end.destroy();
+                delete this.connectionEndHandles[connId];
+            });
+        }
 
         if (!editableMode) return;
 
@@ -1710,7 +2215,28 @@ export class Visualizer {
         Array.from(this.selectedConnectionIds).forEach(connId => {
             const line = this.connectionLines[connId];
             if (!line) return;
-            const info = this.getPrimaryVerticalSegmentInfo(line.points());
+            
+            // Installation mode: handle vertical connections differently
+            let info, isVertical;
+            if (mode === 'INSTALLATION') {
+                const offsets = this.connectionPortOffsets?.[connId];
+                const isVerticalConnection = offsets?.start?.side && offsets?.end?.side && 
+                    ((offsets.start.side === 'top' || offsets.start.side === 'bottom') || 
+                     (offsets.end.side === 'top' || offsets.end.side === 'bottom'));
+                
+                if (isVerticalConnection) {
+                    info = this.getPrimaryHorizontalSegmentInfo(line.points());
+                    isVertical = false;
+                } else {
+                    info = this.getPrimaryVerticalSegmentInfo(line.points());
+                    isVertical = true;
+                }
+            } else {
+                // Configuration mode: always use vertical segment info (original logic)
+                info = this.getPrimaryVerticalSegmentInfo(line.points());
+                isVertical = true;
+            }
+            
             if (!info) return;
 
             const conn = targetConnections[connId];
@@ -1718,9 +2244,12 @@ export class Visualizer {
 
             let handle = this.connectionBendHandles[connId];
             if (!handle) {
+                const handleX = isVertical ? info.x : info.xMid;
+                const handleY = isVertical ? info.yMid : info.y;
+                
                 handle = new Konva.Circle({
-                    x: info.x,
-                    y: info.yMid,
+                    x: handleX,
+                    y: handleY,
                     radius: 6,
                     fill: '#ffffff',
                     stroke: color,
@@ -1733,39 +2262,310 @@ export class Visualizer {
                 });
 
                 handle.on('mousedown', (e) => { e.cancelBubble = true; });
+                handle.setAttr('_isVertical', isVertical);
 
-                handle.dragBoundFunc((pos) => ({ x: this.snapToHalfGridX(pos.x), y: info.yMid }));
+                if (isVertical) {
+                    // Vertical connection: move horizontally
+                    handle.dragBoundFunc((pos) => ({ x: this.snapToHalfGridX(pos.x), y: info.yMid }));
+                } else {
+                    // Horizontal connection: move vertically
+                    handle.dragBoundFunc((pos) => ({ x: info.xMid, y: this.snapToHalfGridY(pos.y) }));
+                }
 
                 // Live preview while dragging (store write only on dragend)
                 handle.on('dragmove', () => {
-                    const bendX = this.snapToHalfGridX(handle.x());
                     const offsets = this.connectionPortOffsets?.[connId];
                     if (!offsets?.start || !offsets?.end) return;
 
-                    const newPoints = this.buildBendOverrideRoute(offsets.start, offsets.end, bendX);
-                    line.points(newPoints);
-
-                    const updated = this.getPrimaryVerticalSegmentInfo(newPoints);
-                    if (updated) handle.position({ x: bendX, y: updated.yMid });
+                    if (isVertical) {
+                        const bendX = this.snapToHalfGridX(handle.x());
+                        const newPoints = this.buildBendOverrideRoute(offsets.start, offsets.end, bendX);
+                        line.points(newPoints);
+                        const updated = this.getPrimaryVerticalSegmentInfo(newPoints);
+                        if (updated) handle.position({ x: bendX, y: updated.yMid });
+                    } else {
+                        const bendY = this.snapToHalfGridY(handle.y());
+                        const newPoints = this.buildBendOverrideRouteVertical(offsets.start, offsets.end, bendY);
+                        line.points(newPoints);
+                        const updated = this.getPrimaryHorizontalSegmentInfo(newPoints);
+                        if (updated) handle.position({ x: updated.xMid, y: bendY });
+                    }
 
                     this.layer.batchDraw();
                 });
 
                 handle.on('dragend', () => {
-                    const bendX = this.snapToHalfGridX(handle.x());
                     const offsets = this.connectionPortOffsets?.[connId];
-                    this.setConnectionBendX(connId, mode, bendX, offsets);
+                    if (isVertical) {
+                        const bendX = this.snapToHalfGridX(handle.x());
+                        this.setConnectionBendX(connId, mode, bendX, offsets);
+                    } else {
+                        const bendY = this.snapToHalfGridY(handle.y());
+                        this.setConnectionBendY(connId, mode, bendY, offsets);
+                    }
                 });
 
                 this.connectionBendHandles[connId] = handle;
                 this.layer.add(handle);
                 handle.moveToTop();
             } else {
-                handle.position({ x: info.x, y: info.yMid });
+                const handleX = isVertical ? info.x : info.xMid;
+                const handleY = isVertical ? info.yMid : info.y;
+                handle.position({ x: handleX, y: handleY });
                 handle.stroke(color);
+                handle.setAttr('_isVertical', isVertical);
+                
+                // Update drag bound function
+                if (isVertical) {
+                    handle.dragBoundFunc((pos) => ({ x: this.snapToHalfGridX(pos.x), y: info.yMid }));
+                } else {
+                    handle.dragBoundFunc((pos) => ({ x: info.xMid, y: this.snapToHalfGridY(pos.y) }));
+                }
                 handle.moveToTop();
             }
         });
+    }
+
+    updateConnectionEndHandles() {
+        const mode = this.dataStore.getState().meta.mode;
+        if (mode !== 'INSTALLATION') {
+            // Clean up all end handles if not in Installation mode
+            Object.keys(this.connectionEndHandles).forEach(connId => {
+                const handles = this.connectionEndHandles[connId];
+                if (handles.start) handles.start.destroy();
+                if (handles.end) handles.end.destroy();
+                delete this.connectionEndHandles[connId];
+            });
+            return;
+        }
+
+        const data = this.dataStore.getState();
+        const targetConnections = data.installationConnections || {};
+        const targetNodes = data.nodes || {};
+
+        // Clean up handles for unselected connections
+        Object.keys(this.connectionEndHandles).forEach(connId => {
+            if (!this.selectedConnectionIds.has(connId)) {
+                const handles = this.connectionEndHandles[connId];
+                if (handles.start) handles.start.destroy();
+                if (handles.end) handles.end.destroy();
+                delete this.connectionEndHandles[connId];
+            }
+        });
+
+        Array.from(this.selectedConnectionIds).forEach(connId => {
+            const conn = targetConnections[connId];
+            if (!conn) return;
+
+            // Get offsets from Installation mode's connection layout calculation
+            // Ensure we're using Installation mode's port offsets, not Configuration mode's
+            const offsets = this.connectionPortOffsets[connId];
+            if (!offsets || !offsets.start || !offsets.end) {
+                // If offsets don't exist, recalculate layout for this connection to get proper offsets
+                const tempResult = this.calculateConnectionLayout({ [connId]: conn }, targetNodes, 'INSTALLATION');
+                const tempOffsets = tempResult.portOffsets?.[connId];
+                if (tempOffsets && tempOffsets.start && tempOffsets.end) {
+                    if (!this.connectionPortOffsets[connId]) {
+                        this.connectionPortOffsets[connId] = {};
+                    }
+                    this.connectionPortOffsets[connId].start = tempOffsets.start;
+                    this.connectionPortOffsets[connId].end = tempOffsets.end;
+                } else {
+                    return; // Cannot determine endpoints
+                }
+            }
+
+            const sourceNode = targetNodes[conn.source];
+            const targetNode = targetNodes[conn.target];
+            if (!sourceNode || !targetNode) return;
+            
+            // Verify offsets are for Installation mode (check if sides are valid for Installation)
+            const currentOffsets = this.connectionPortOffsets[connId];
+            if (!currentOffsets.start || !currentOffsets.end) return;
+
+            const connColor = conn.color || '#94a3b8';
+
+            // Get or create handles
+            let handles = this.connectionEndHandles[connId];
+            if (!handles) {
+                handles = { start: null, end: null };
+                this.connectionEndHandles[connId] = handles;
+            }
+
+            // Create/update start handle
+            if (!handles.start) {
+                handles.start = new Konva.Circle({
+                    x: offsets.start.x,
+                    y: offsets.start.y,
+                    radius: 3,
+                    fill: '#ffffff',
+                    stroke: connColor,
+                    strokeWidth: 2,
+                    shadowColor: 'black',
+                    shadowBlur: 4,
+                    shadowOpacity: 0.3,
+                    draggable: true,
+                    listening: true
+                });
+
+                handles.start.on('dragstart', () => {
+                    handles.start.setAttr('_startX', handles.start.x());
+                    handles.start.setAttr('_startY', handles.start.y());
+                    handles.start.setAttr('_isDragging', true);
+                });
+
+                handles.start.on('dragmove', () => {
+                    this.handleEndPointDrag(connId, 'start', handles.start.x(), handles.start.y());
+                });
+
+                handles.start.on('dragend', () => {
+                    this.handleEndPointDragEnd(connId, 'start', handles.start.x(), handles.start.y());
+                    handles.start.setAttr('_isDragging', false);
+                });
+
+                this.layer.add(handles.start);
+            } else {
+                handles.start.x(offsets.start.x);
+                handles.start.y(offsets.start.y);
+            }
+
+            // Create/update end handle
+            if (!handles.end) {
+                handles.end = new Konva.Circle({
+                    x: offsets.end.x,
+                    y: offsets.end.y,
+                    radius: 3,
+                    fill: '#ffffff',
+                    stroke: connColor,
+                    strokeWidth: 2,
+                    shadowColor: 'black',
+                    shadowBlur: 4,
+                    shadowOpacity: 0.3,
+                    draggable: true,
+                    listening: true
+                });
+
+                handles.end.on('dragstart', () => {
+                    handles.end.setAttr('_startX', handles.end.x());
+                    handles.end.setAttr('_startY', handles.end.y());
+                    handles.end.setAttr('_isDragging', true);
+                });
+
+                handles.end.on('dragmove', () => {
+                    this.handleEndPointDrag(connId, 'end', handles.end.x(), handles.end.y());
+                });
+
+                handles.end.on('dragend', () => {
+                    this.handleEndPointDragEnd(connId, 'end', handles.end.x(), handles.end.y());
+                    handles.end.setAttr('_isDragging', false);
+                });
+
+                this.layer.add(handles.end);
+            } else {
+                handles.end.x(offsets.end.x);
+                handles.end.y(offsets.end.y);
+            }
+        });
+    }
+
+    handleEndPointDrag(connId, endpointType, x, y) {
+        const data = this.dataStore.getState();
+        const conn = data.installationConnections[connId];
+        if (!conn) return;
+
+        const targetNodes = data.nodes || {};
+        const nodeId = endpointType === 'start' ? conn.source : conn.target;
+        const node = targetNodes[nodeId];
+        if (!node) return;
+
+        const rect = this.getNodeRect(node, 'INSTALLATION');
+        
+        // Find closest side and snap point
+        const snapResult = this.findClosestSideAndPoint(x, y, rect);
+        
+        // Update handle position to show snap preview
+        const handles = this.connectionEndHandles[connId];
+        if (handles && handles[endpointType]) {
+            handles[endpointType].x(snapResult.x);
+            handles[endpointType].y(snapResult.y);
+        }
+
+        this.layer.batchDraw();
+    }
+
+    handleEndPointDragEnd(connId, endpointType, x, y) {
+        const data = this.dataStore.getState();
+        const conn = data.installationConnections[connId];
+        if (!conn) return;
+
+        const targetNodes = data.nodes || {};
+        const nodeId = endpointType === 'start' ? conn.source : conn.target;
+        const node = targetNodes[nodeId];
+        if (!node) return;
+
+        const rect = this.getNodeRect(node, 'INSTALLATION');
+        
+        // Find closest side and snap point
+        const snapResult = this.findClosestSideAndPoint(x, y, rect);
+        
+        // Update port offset
+        if (!this.connectionPortOffsets[connId]) {
+            this.connectionPortOffsets[connId] = {};
+        }
+        const offsets = this.connectionPortOffsets[connId];
+        
+        if (endpointType === 'start') {
+            offsets.start = {
+                x: snapResult.x,
+                y: snapResult.y,
+                side: snapResult.side,
+                _manuallySet: true // Mark as manually set by user
+            };
+        } else {
+            offsets.end = {
+                x: snapResult.x,
+                y: snapResult.y,
+                side: snapResult.side,
+                _manuallySet: true // Mark as manually set by user
+            };
+        }
+
+        // Recalculate connection layout
+        const targetConnections = data.installationConnections || {};
+        this.renderConnections(targetConnections, targetNodes, 'INSTALLATION');
+    }
+
+    findClosestSideAndPoint(x, y, rect) {
+        // Calculate distances to each side
+        const distToLeft = Math.abs(x - rect.x);
+        const distToRight = Math.abs(x - (rect.x + rect.width));
+        const distToTop = Math.abs(y - rect.y);
+        const distToBottom = Math.abs(y - (rect.y + rect.height));
+
+        // Find minimum distance
+        const minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
+
+        let side, snapX, snapY;
+
+        if (minDist === distToLeft) {
+            side = 'left';
+            snapX = rect.x;
+            snapY = rect.y + rect.height / 2; // Center of the side
+        } else if (minDist === distToRight) {
+            side = 'right';
+            snapX = rect.x + rect.width;
+            snapY = rect.y + rect.height / 2; // Center of the side
+        } else if (minDist === distToTop) {
+            side = 'top';
+            snapX = rect.x + rect.width / 2; // Center of the side
+            snapY = rect.y;
+        } else {
+            side = 'bottom';
+            snapX = rect.x + rect.width / 2; // Center of the side
+            snapY = rect.y + rect.height;
+        }
+
+        return { side, x: snapX, y: snapY };
     }
 
     getPrimaryVerticalSegmentInfo(points) {
@@ -1784,6 +2584,24 @@ export class Visualizer {
         }
         if (!best) return null;
         return { ...best, yMid: (best.y1 + best.y2) / 2 };
+    }
+
+    getPrimaryHorizontalSegmentInfo(points) {
+        if (!points || points.length < 4) return null;
+
+        let best = null;
+        for (let i = 0; i < points.length - 2; i += 2) {
+            const x1 = points[i];
+            const y1 = points[i + 1];
+            const x2 = points[i + 2];
+            const y2 = points[i + 3];
+            if (Math.abs(y1 - y2) >= 0.1) continue;
+            const len = Math.abs(x2 - x1);
+            if (len <= 0) continue;
+            if (!best || len > best.len) best = { index: i, x1, x2, y: y1, len };
+        }
+        if (!best) return null;
+        return { ...best, xMid: (best.x1 + best.x2) / 2 };
     }
 
     buildBendOverrideRoute(start, end, bendX, buffer = 20) {
@@ -1809,6 +2627,35 @@ export class Visualizer {
         points.push(p1.x, p1.y);
         points.push(bendX, p1.y);
         points.push(bendX, p2.y);
+        points.push(p2.x, p2.y);
+        points.push(end.x, end.y);
+
+        return this.simplifyOrthogonalPoints(points);
+    }
+
+    buildBendOverrideRouteVertical(start, end, bendY, buffer = 20) {
+        const points = [start.x, start.y];
+
+        const p1 = { ...start };
+        const p2 = { ...end };
+
+        switch (start.side) {
+            case 'top': p1.y -= buffer; break;
+            case 'bottom': p1.y += buffer; break;
+            case 'left': p1.x -= buffer; break;
+            case 'right': p1.x += buffer; break;
+        }
+
+        switch (end.side) {
+            case 'top': p2.y -= buffer; break;
+            case 'bottom': p2.y += buffer; break;
+            case 'left': p2.x -= buffer; break;
+            case 'right': p2.x += buffer; break;
+        }
+
+        points.push(p1.x, p1.y);
+        points.push(p1.x, bendY);
+        points.push(p2.x, bendY);
         points.push(p2.x, p2.y);
         points.push(end.x, end.y);
 
@@ -1859,19 +2706,6 @@ export class Visualizer {
         const activeElement = document.activeElement;
         if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) return;
 
-        // Handle Up/Down arrows for connection order adjustment
-        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-            e.preventDefault();
-            this.adjustConnectionOrder(e.key === 'ArrowUp' ? -1 : 1);
-            return;
-        }
-
-        // Handle Left/Right arrows for bend X adjustment
-        const dx = e.key === 'ArrowLeft' ? -6 : (e.key === 'ArrowRight' ? 6 : 0);
-        if (!dx) return;
-
-        e.preventDefault();
-
         const mode = this.dataStore.getState().meta.mode;
         const data = this.dataStore.getState();
         
@@ -1887,11 +2721,187 @@ export class Visualizer {
             targetConnections = {};
         }
 
+        // Handle Up/Down arrows
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            let hasVerticalConnection = false;
+            
+            if (mode === 'INSTALLATION') {
+                // Check if any selected connection is vertical (top/bottom) in Installation mode
+                Array.from(this.selectedConnectionIds).forEach(connId => {
+                    const offsets = this.connectionPortOffsets?.[connId];
+                    if (offsets?.start?.side && offsets?.end?.side) {
+                        const isVertical = (offsets.start.side === 'top' || offsets.start.side === 'bottom') || 
+                                          (offsets.end.side === 'top' || offsets.end.side === 'bottom');
+                        if (isVertical) {
+                            hasVerticalConnection = true;
+                        }
+                    }
+                });
+
+                if (hasVerticalConnection) {
+                    // For vertical connections in Installation mode, adjust bend Y
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.cancelBubble = true;
+                    
+                    // Explicitly check for ArrowUp and ArrowDown
+                    // Use 6px step to match grid unit (now Y axis uses 6px grid same as X axis)
+                    let dy = 0;
+                    if (e.key === 'ArrowUp') {
+                        dy = -6;
+                    } else if (e.key === 'ArrowDown') {
+                        dy = 6;
+                    } else {
+                        return; // Not an up/down arrow key
+                    }
+
+                    let hasUpdated = false;
+                    Array.from(this.selectedConnectionIds).forEach(connId => {
+                        const conn = targetConnections[connId];
+                        if (!conn) return;
+
+                        const offsets = this.connectionPortOffsets?.[connId];
+                        const isVertical = offsets?.start?.side && offsets?.end?.side && 
+                            ((offsets.start.side === 'top' || offsets.start.side === 'bottom') || 
+                             (offsets.end.side === 'top' || offsets.end.side === 'bottom'));
+                        
+                        if (!isVertical) return;
+
+                        let bendY = this.getConnectionBendY(conn, mode, offsets);
+                        if (typeof bendY !== 'number') {
+                            const line = this.connectionLines[connId];
+                            const info = line ? this.getPrimaryHorizontalSegmentInfo(line.points()) : null;
+                            if (!info) return;
+                            bendY = info.y;
+                        }
+
+                        // Calculate new bendY position
+                        const newBendY = bendY + dy;
+                        const next = this.snapToHalfGridY(newBendY);
+                        
+                        console.log('[handleConnectionArrowKey] Vertical connection bendY update:', {
+                            connId,
+                            currentBendY: bendY,
+                            dy,
+                            newBendY,
+                            snapped: next,
+                            key: e.key
+                        });
+                        
+                        // Update the connection bendY
+                        this.setConnectionBendY(connId, mode, next, offsets);
+                        hasUpdated = true;
+                    });
+                    
+                    if (hasUpdated) {
+                        const targetNodes = mode === 'NETWORK' ? data.networkNodes : data.nodes;
+                        // Store selected connection IDs before rendering (to preserve selection)
+                        const selectedIds = Array.from(this.selectedConnectionIds);
+                        this.renderConnections(targetConnections, targetNodes, mode);
+                        // Restore selection after rendering (renderConnections now calls updateConnectionEndHandles internally)
+                        this.selectedConnectionIds = new Set(selectedIds);
+                        // Ensure end handles are visible for selected connections
+                        this.updateConnectionEndHandles();
+                    }
+                    return;
+                }
+            }
+            
+            // For Configuration mode or horizontal connections in Installation mode, adjust connection order
+            // In Installation mode, horizontal connections (left/right) should also support order adjustment
+            if (mode === 'INSTALLATION') {
+                // Check if any selected connection is horizontal (left/right)
+                let hasHorizontalConnection = false;
+                Array.from(this.selectedConnectionIds).forEach(connId => {
+                    const offsets = this.connectionPortOffsets?.[connId];
+                    if (offsets?.start?.side && offsets?.end?.side) {
+                        const isHorizontal = (offsets.start.side === 'left' || offsets.start.side === 'right') && 
+                                           (offsets.end.side === 'left' || offsets.end.side === 'right');
+                        if (isHorizontal) {
+                            hasHorizontalConnection = true;
+                        }
+                    }
+                });
+                
+                if (hasHorizontalConnection) {
+                    // For horizontal connections in Installation mode, adjust connection order
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const direction = e.key === 'ArrowUp' ? -1 : 1;
+                    console.log('[handleConnectionArrowKey] Calling adjustConnectionOrder for Installation horizontal, direction:', direction);
+                    // Store selected connection IDs before rendering (to preserve selection)
+                    const selectedIds = Array.from(this.selectedConnectionIds);
+                    this.adjustConnectionOrder(direction);
+                    // Restore selection and ensure end handles are updated
+                    this.selectedConnectionIds = new Set(selectedIds);
+                    this.updateConnectionEndHandles();
+                    return;
+                }
+            }
+            
+            // For Configuration mode, adjust connection order
+            if (mode === 'CONFIGURATION') {
+                e.preventDefault();
+                e.stopPropagation();
+                const direction = e.key === 'ArrowUp' ? -1 : 1;
+                console.log('[handleConnectionArrowKey] Calling adjustConnectionOrder, mode:', mode, 'direction:', direction);
+                this.adjustConnectionOrder(direction);
+                return;
+            }
+        }
+
+        // Handle Left/Right arrows for bend X adjustment or order adjustment (for vertical connections in Installation mode)
+        const dx = e.key === 'ArrowLeft' ? -6 : (e.key === 'ArrowRight' ? 6 : 0);
+        if (!dx) return;
+
+        e.preventDefault();
+
+        // In Installation mode, check if any selected connection is vertical (top/bottom)
+        // If so, use Left/Right arrows for order adjustment instead of bend X
+        if (mode === 'INSTALLATION') {
+            let hasVerticalConnection = false;
+            Array.from(this.selectedConnectionIds).forEach(connId => {
+                const offsets = this.connectionPortOffsets?.[connId];
+                if (offsets?.start?.side && offsets?.end?.side) {
+                    const isVertical = (offsets.start.side === 'top' || offsets.start.side === 'bottom') || 
+                                      (offsets.end.side === 'top' || offsets.end.side === 'bottom');
+                    if (isVertical) {
+                        hasVerticalConnection = true;
+                    }
+                }
+            });
+
+            if (hasVerticalConnection) {
+                // For vertical connections in Installation mode, adjust connection order with Left/Right arrows
+                e.stopPropagation();
+                const direction = e.key === 'ArrowLeft' ? -1 : 1;
+                console.log('[handleConnectionArrowKey] Calling adjustConnectionOrder for Installation vertical, direction:', direction);
+                // Store selected connection IDs before rendering (to preserve selection)
+                const selectedIds = Array.from(this.selectedConnectionIds);
+                this.adjustConnectionOrder(direction);
+                // Restore selection and ensure end handles are updated
+                this.selectedConnectionIds = new Set(selectedIds);
+                this.updateConnectionEndHandles();
+                return;
+            }
+        }
+
         Array.from(this.selectedConnectionIds).forEach(connId => {
             const conn = targetConnections[connId];
             if (!conn) return;
 
             const offsets = this.connectionPortOffsets?.[connId];
+
+            // Configuration mode: always use bendX
+            // Installation mode: skip vertical connections for horizontal arrow keys
+            if (mode === 'INSTALLATION') {
+                const isVertical = offsets?.start?.side && offsets?.end?.side && 
+                    ((offsets.start.side === 'top' || offsets.start.side === 'bottom') || 
+                     (offsets.end.side === 'top' || offsets.end.side === 'bottom'));
+                
+                if (isVertical) return; // Skip vertical connections
+            }
+
             let bendX = this.getConnectionBendX(conn, mode, offsets);
             if (typeof bendX !== 'number') {
                 const line = this.connectionLines[connId];
@@ -1937,25 +2947,50 @@ export class Visualizer {
         let connectionOrder = data.meta[orderKey] || {};
         
         // Process each selected connection
+        let processedCount = 0;
         Array.from(this.selectedConnectionIds).forEach(connId => {
             const conn = connections[connId];
-            if (!conn) return;
+            if (!conn) {
+                console.log('[adjustConnectionOrder] Connection not found:', connId);
+                return;
+            }
 
             const sourceNode = nodes[conn.source];
             const targetNode = nodes[conn.target];
-            if (!sourceNode || !targetNode) return;
+            if (!sourceNode || !targetNode) {
+                console.log('[adjustConnectionOrder] Node not found, source:', conn.source, 'target:', conn.target);
+                return;
+            }
 
             // Determine which side this connection attaches to
-            const sourceRect = this.getNodeRect(sourceNode, mode);
-            const targetRect = this.getNodeRect(targetNode, mode);
-            const { sourceSide, targetSide } = this.determineConnectionSides(sourceRect, targetRect);
+            // In Installation mode, use actual connectionPortOffsets if available
+            let sourceSide, targetSide;
+            const existingOffsets = this.connectionPortOffsets?.[connId];
+            
+            if (mode === 'INSTALLATION' && existingOffsets?.start?.side && existingOffsets?.end?.side) {
+                // Use actual port offsets for Installation mode
+                sourceSide = existingOffsets.start.side;
+                targetSide = existingOffsets.end.side;
+            } else {
+                // Calculate sides for other modes or if offsets not available
+                const sourceRect = this.getNodeRect(sourceNode, mode);
+                const targetRect = this.getNodeRect(targetNode, mode);
+                const sides = this.determineConnectionSides(sourceRect, targetRect, mode);
+                sourceSide = sides.sourceSide;
+                targetSide = sides.targetSide;
+            }
+
+            console.log('[adjustConnectionOrder] Processing connection:', connId, 'sourceSide:', sourceSide, 'targetSide:', targetSide);
 
             // Adjust order for source node
             this.adjustConnectionOrderForNode(connectionOrder, conn.source, sourceSide, connId, direction, connections, nodes, mode);
             
             // Adjust order for target node
             this.adjustConnectionOrderForNode(connectionOrder, conn.target, targetSide, connId, direction, connections, nodes, mode);
+            processedCount++;
         });
+        
+        console.log('[adjustConnectionOrder] Processed', processedCount, 'connections');
 
         // Update metadata for this specific mode
         const updateObj = {};
@@ -1963,7 +2998,13 @@ export class Visualizer {
         this.dataStore.updateMeta(updateObj);
         
         // Re-render connections to apply new order
-        this.render();
+        // Get fresh data after updateMeta (which triggers notify)
+        const freshData = this.dataStore.getState();
+        const freshConnections = mode === 'NETWORK' ? freshData.networkConnections : 
+                                mode === 'CONFIGURATION' ? freshData.configurationConnections : 
+                                freshData.installationConnections || {};
+        const targetNodes = mode === 'NETWORK' ? freshData.networkNodes : freshData.nodes;
+        this.renderConnections(freshConnections, targetNodes, mode);
     }
 
     adjustConnectionOrderForNode(connectionOrder, nodeId, side, connId, direction, connections, nodes, mode) {
@@ -1993,13 +3034,24 @@ export class Visualizer {
                     const otherNode = nodes[otherNodeId];
                     if (!otherNode) return;
                     
-                    const otherRect = this.getNodeRect(otherNode, mode);
-                    const { sourceSide, targetSide } = this.determineConnectionSides(
-                        conn.source === nodeId ? rect : otherRect,
-                        conn.target === nodeId ? rect : otherRect
-                    );
+                    // In Installation mode, use actual connectionPortOffsets if available
+                    let connSide;
+                    const existingOffsets = this.connectionPortOffsets?.[conn.id];
                     
-                    const connSide = conn.source === nodeId ? sourceSide : targetSide;
+                    if (mode === 'INSTALLATION' && existingOffsets?.start?.side && existingOffsets?.end?.side) {
+                        // Use actual port offsets for Installation mode
+                        connSide = conn.source === nodeId ? existingOffsets.start.side : existingOffsets.end.side;
+                    } else {
+                        // Calculate sides for other modes or if offsets not available
+                        const otherRect = this.getNodeRect(otherNode, mode);
+                        const { sourceSide, targetSide } = this.determineConnectionSides(
+                            conn.source === nodeId ? rect : otherRect,
+                            conn.target === nodeId ? rect : otherRect,
+                            mode
+                        );
+                        connSide = conn.source === nodeId ? sourceSide : targetSide;
+                    }
+                    
                     if (connSide === side) {
                         allConnectionsOnSide.push(conn.id);
                     }
@@ -2034,21 +3086,94 @@ export class Visualizer {
             }
             
             const newIndex = sideOrder.indexOf(connId);
-            if (newIndex === -1) return;
+            if (newIndex === -1) {
+                console.log('[adjustConnectionOrderForNode] Connection not found in order list after initialization:', connId);
+                return;
+            }
             
             // Move connection
             const newIndexAdjusted = Math.max(0, Math.min(sideOrder.length - 1, newIndex + direction));
+            console.log('[adjustConnectionOrderForNode] Moving connection:', connId, 'from index', newIndex, 'to', newIndexAdjusted, 'direction:', direction);
             if (newIndexAdjusted !== newIndex) {
                 sideOrder.splice(newIndex, 1);
                 sideOrder.splice(newIndexAdjusted, 0, connId);
+                console.log('[adjustConnectionOrderForNode] Order updated:', sideOrder);
+            } else {
+                console.log('[adjustConnectionOrderForNode] No change needed (already at boundary)');
             }
         } else {
             // Connection already in order list, move it
             const newIndex = Math.max(0, Math.min(sideOrder.length - 1, currentIndex + direction));
+            console.log('[adjustConnectionOrderForNode] Moving existing connection:', connId, 'from index', currentIndex, 'to', newIndex, 'direction:', direction);
             if (newIndex !== currentIndex) {
                 sideOrder.splice(currentIndex, 1);
                 sideOrder.splice(newIndex, 0, connId);
+                console.log('[adjustConnectionOrderForNode] Order updated:', sideOrder);
+            } else {
+                console.log('[adjustConnectionOrderForNode] No change needed (already at boundary)');
             }
+        }
+    }
+
+    getConnectionBendY(conn, mode, offsets) {
+        if (this.tempBendOverrides && this.tempBendOverrides[`${conn.id}_y`] !== undefined) {
+            return this.tempBendOverrides[`${conn.id}_y`];
+        }
+        const field = (mode === 'CONFIGURATION') ? 'bendYLogical' : 'bendYPhysical';
+        const storedValue = conn[field];
+        
+        // If stored value is undefined, return undefined (will use default routing)
+        if (typeof storedValue !== 'number') {
+            return undefined;
+        }
+        
+        // Convert relative offset back to absolute coordinate
+        if (offsets?.start && offsets?.end) {
+            const midpointY = (offsets.start.y + offsets.end.y) / 2;
+            return storedValue + midpointY; // storedValue is offset from midpoint
+        }
+        
+        return storedValue;
+    }
+
+    setConnectionBendY(connId, mode, bendY, offsets) {
+        const data = this.dataStore.getState();
+        const field = (mode === 'CONFIGURATION') ? 'bendYLogical' : 'bendYPhysical';
+        
+        // Get current connection to check for existing value
+        let currentConn = null;
+        if (mode === 'CONFIGURATION' && data.configurationConnections && data.configurationConnections[connId]) {
+            currentConn = data.configurationConnections[connId];
+        } else if (mode === 'INSTALLATION' && data.installationConnections && data.installationConnections[connId]) {
+            currentConn = data.installationConnections[connId];
+        } else if (mode === 'NETWORK' && data.networkConnections && data.networkConnections[connId]) {
+            currentConn = data.networkConnections[connId];
+        }
+        
+        // Convert absolute bendY to relative offset (based on midpoint of two blocks)
+        let valueToStore = bendY;
+        if (offsets?.start && offsets?.end) {
+            const midpointY = (offsets.start.y + offsets.end.y) / 2;
+            valueToStore = bendY - midpointY; // Store as offset from midpoint
+        }
+        
+        // Update connection in the correct mode-specific connection set
+        let updated = false;
+        if (mode === 'CONFIGURATION' && data.configurationConnections && data.configurationConnections[connId]) {
+            data.configurationConnections[connId][field] = valueToStore;
+            updated = true;
+        } else if (mode === 'INSTALLATION' && data.installationConnections && data.installationConnections[connId]) {
+            data.installationConnections[connId][field] = valueToStore;
+            updated = true;
+        } else if (mode === 'NETWORK' && data.networkConnections && data.networkConnections[connId]) {
+            data.networkConnections[connId][field] = valueToStore;
+            updated = true;
+        }
+        
+        if (updated) {
+            // Trigger notification to re-render
+            this.dataStore.notify();
+            console.log('[setConnectionBendY] Updated bendY for', connId, 'mode:', mode, 'valueToStore:', valueToStore, 'absolute bendY:', bendY);
         }
     }
 
@@ -2087,15 +3212,24 @@ export class Visualizer {
             return;
         }
 
-        // Handle Arrow keys for connections
+        // Handle Arrow keys - prioritize connection selection if connections are selected
+        // If connections are selected, handle connection arrow keys (for order adjustment or bend adjustment)
         if (this.selectedConnectionIds.size > 0) {
+            // Prevent default to avoid scrolling or other default behaviors
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                e.preventDefault();
+            }
+            // Let handleConnectionArrowKey handle all the logic (mode checking, vertical connection checking, etc.)
+            console.log('[handleKeyDown] Calling handleConnectionArrowKey, mode:', this.dataStore.getState().meta.mode, 'key:', e.key, 'selectedConnections:', Array.from(this.selectedConnectionIds));
             this.handleConnectionArrowKey(e);
             return;
         }
 
-        // Handle Arrow keys for nodes
+        // Handle Arrow keys for nodes (only if no connections are selected)
         if (this.selectedNodeIds.size > 0) {
+            // Nodes are selected - move nodes
             this.handleArrowKey(e);
+            return;
         }
     }
 

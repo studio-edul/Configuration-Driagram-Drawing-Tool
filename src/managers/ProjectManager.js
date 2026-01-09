@@ -254,5 +254,70 @@ export class ProjectManager {
                 event.target.value = ''; // Reset input
             });
     }
+
+    /**
+     * Clear all project data and reset to initial state
+     */
+    clearProject() {
+        // Confirm before clearing
+        if (!confirm('모든 작업 내용이 삭제됩니다. 정말 초기화하시겠습니까?')) {
+            return;
+        }
+
+        try {
+            const currentState = this.dataStore.getState();
+            
+            // Clear all nodes
+            const allNodeIds = [
+                ...Object.keys(currentState.nodes || {}),
+                ...Object.keys(currentState.networkNodes || {})
+            ];
+            if (allNodeIds.length > 0) {
+                this.dataStore.deleteNodes(allNodeIds);
+            }
+
+            // Clear all connections
+            const allConnectionIds = [
+                ...Object.keys(currentState.configurationConnections || {}),
+                ...Object.keys(currentState.installationConnections || {}),
+                ...Object.keys(currentState.networkConnections || {})
+            ];
+            allConnectionIds.forEach(connId => {
+                this.dataStore.removeConnection(connId);
+            });
+
+            // Clear all requests
+            const allRequestIds = Object.keys(currentState.requests || {});
+            allRequestIds.forEach(requestId => {
+                delete currentState.requests[requestId];
+            });
+
+            // Reset meta data to initial state (keep hardwareList and projectName)
+            this.dataStore.updateMeta({
+                mode: 'CONFIGURATION',
+                floorPlanImage: null,
+                bomMetadata: {},
+                hardwareListMetadata: {},
+                configurationConnectionOrder: {},
+                installationConnectionOrder: {},
+                networkConnectionOrder: {}
+            });
+
+            // Clear LocalStorage
+            if (this.dataStore && typeof this.dataStore.clearLocalStorage === 'function') {
+                this.dataStore.clearLocalStorage();
+            }
+
+            // Re-render visualizer
+            if (this.visualizer) {
+                this.visualizer.render();
+            }
+
+            alert('프로젝트가 초기화되었습니다.');
+        } catch (error) {
+            console.error('Error clearing project:', error);
+            alert('프로젝트 초기화 중 오류가 발생했습니다: ' + error.message);
+        }
+    }
 }
 

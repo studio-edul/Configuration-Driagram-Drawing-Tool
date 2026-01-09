@@ -94,5 +94,13 @@ export class App {
                 this.projectManager.exportProject();
             });
         }
+
+        // Clear Project button
+        const clearButton = document.getElementById('btn-clear-project');
+        if (clearButton) {
+            clearButton.addEventListener('click', () => {
+                this.projectManager.clearProject();
+            });
+        }
     }
 }

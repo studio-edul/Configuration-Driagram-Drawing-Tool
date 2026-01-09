@@ -125,25 +125,59 @@ export class DataStore {
     }
 
     updateConnection(connectionId, updates) {
+        let updated = false;
+        
+        // Update in both configuration and installation connections if they exist
+        // (since connections are shared between these two modes)
         if (this.projectData.configurationConnections && this.projectData.configurationConnections[connectionId]) {
             this.projectData.configurationConnections[connectionId] = { ...this.projectData.configurationConnections[connectionId], ...updates };
+            updated = true;
+            // Also update in installationConnections if it exists (same connection)
+            if (this.projectData.installationConnections && this.projectData.installationConnections[connectionId]) {
+                this.projectData.installationConnections[connectionId] = { ...this.projectData.installationConnections[connectionId], ...updates };
+            }
         } else if (this.projectData.installationConnections && this.projectData.installationConnections[connectionId]) {
             this.projectData.installationConnections[connectionId] = { ...this.projectData.installationConnections[connectionId], ...updates };
+            updated = true;
+            // Also update in configurationConnections if it exists (same connection)
+            if (this.projectData.configurationConnections && this.projectData.configurationConnections[connectionId]) {
+                this.projectData.configurationConnections[connectionId] = { ...this.projectData.configurationConnections[connectionId], ...updates };
+            }
         } else if (this.projectData.networkConnections && this.projectData.networkConnections[connectionId]) {
             this.projectData.networkConnections[connectionId] = { ...this.projectData.networkConnections[connectionId], ...updates };
+            updated = true;
         }
-        this.notify();
+        
+        if (updated) {
+            this.notify();
+        }
     }
 
     removeConnection(connectionId) {
+        let removed = false;
+        
+        // Remove from both configuration and installation connections
+        // (since connections are shared between these two modes)
         if (this.projectData.configurationConnections && this.projectData.configurationConnections[connectionId]) {
             delete this.projectData.configurationConnections[connectionId];
-            this.notify();
+            removed = true;
+            // Also remove from installationConnections if it exists (same connection)
+            if (this.projectData.installationConnections && this.projectData.installationConnections[connectionId]) {
+                delete this.projectData.installationConnections[connectionId];
+            }
         } else if (this.projectData.installationConnections && this.projectData.installationConnections[connectionId]) {
             delete this.projectData.installationConnections[connectionId];
-            this.notify();
+            removed = true;
+            // Also remove from configurationConnections if it exists (same connection)
+            if (this.projectData.configurationConnections && this.projectData.configurationConnections[connectionId]) {
+                delete this.projectData.configurationConnections[connectionId];
+            }
         } else if (this.projectData.networkConnections && this.projectData.networkConnections[connectionId]) {
             delete this.projectData.networkConnections[connectionId];
+            removed = true;
+        }
+        
+        if (removed) {
             this.notify();
         }
     }
