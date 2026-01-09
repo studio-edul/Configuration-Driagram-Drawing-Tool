@@ -316,6 +316,15 @@ export class DataStore {
                 return false;
             }
 
+            // Check version compatibility
+            // If saved version is different from current version, clear LocalStorage
+            const savedVersion = data.version || '1.0.0';
+            if (savedVersion !== this.currentVersion) {
+                console.log(`Version mismatch detected. Saved: ${savedVersion}, Current: ${this.currentVersion}. Clearing LocalStorage.`);
+                this.clearLocalStorage();
+                return false; // Don't load old data
+            }
+
             // Load data into projectData (without triggering notify to avoid infinite loop)
             this.projectData.meta = {
                 mode: data.meta.mode || 'CONFIGURATION',
