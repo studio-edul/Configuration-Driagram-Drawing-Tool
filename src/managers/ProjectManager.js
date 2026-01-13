@@ -7,115 +7,6 @@ export class ProjectManager {
         this.visualizer = visualizer;
         this.currentVersion = APP_VERSION;
         this.nasManager = new NASManager();
-        this.nasLoginPromise = null; // 로그인 모달 Promise 저장
-        this.initNASLoginModal();
-    }
-
-    /**
-     * NAS 로그인 모달 초기화
-     */
-    initNASLoginModal() {
-        const modal = document.getElementById('nas-login-modal');
-        const usernameInput = document.getElementById('nas-username-input');
-        const passwordInput = document.getElementById('nas-password-input');
-        const confirmButton = document.getElementById('btn-confirm-nas-login');
-        const cancelButton = document.getElementById('btn-cancel-nas-login');
-
-        if (!modal || !usernameInput || !passwordInput || !confirmButton || !cancelButton) {
-            console.warn('NAS login modal elements not found');
-            return;
-        }
-
-        // 취소 버튼
-        cancelButton.addEventListener('click', () => {
-            this.closeNASLoginModal();
-            if (this.nasLoginPromise) {
-                this.nasLoginPromise.reject(new Error('로그인이 취소되었습니다.'));
-                this.nasLoginPromise = null;
-            }
-        });
-
-        // 확인 버튼
-        confirmButton.addEventListener('click', () => {
-            const username = usernameInput.value.trim();
-            const password = passwordInput.value.trim();
-
-            if (!username || !password) {
-                alert('사용자명과 비밀번호를 모두 입력해주세요.');
-                return;
-            }
-
-            if (this.nasLoginPromise) {
-                this.nasLoginPromise.resolve({ username, password });
-                this.nasLoginPromise = null;
-            }
-            this.closeNASLoginModal();
-        });
-
-        // Enter 키로 로그인
-        passwordInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                confirmButton.click();
-            }
-        });
-
-        // 모달 외부 클릭 시 닫기
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                this.closeNASLoginModal();
-                if (this.nasLoginPromise) {
-                    this.nasLoginPromise.reject(new Error('로그인이 취소되었습니다.'));
-                    this.nasLoginPromise = null;
-                }
-            }
-        });
-    }
-
-    /**
-     * NAS 로그인 모달 열기
-     * @returns {Promise<{username: string, password: string}>}
-     */
-    showNASLoginModal() {
-        return new Promise((resolve, reject) => {
-            const modal = document.getElementById('nas-login-modal');
-            const usernameInput = document.getElementById('nas-username-input');
-            const passwordInput = document.getElementById('nas-password-input');
-
-            if (!modal || !usernameInput || !passwordInput) {
-                reject(new Error('로그인 모달을 찾을 수 없습니다.'));
-                return;
-            }
-
-            // 입력 필드 초기화
-            usernameInput.value = '';
-            passwordInput.value = '';
-
-            // Promise 저장
-            this.nasLoginPromise = { resolve, reject };
-
-            // 모달 표시
-            modal.classList.remove('hidden');
-            usernameInput.focus();
-        });
-    }
-
-    /**
-     * NAS 로그인 모달 닫기
-     */
-    closeNASLoginModal() {
-        const modal = document.getElementById('nas-login-modal');
-        const usernameInput = document.getElementById('nas-username-input');
-        const passwordInput = document.getElementById('nas-password-input');
-
-        if (modal) {
-            modal.classList.add('hidden');
-        }
-        if (usernameInput) {
-            usernameInput.value = '';
-        }
-        if (passwordInput) {
-            passwordInput.value = '';
-        }
     }
 
     /**
@@ -402,13 +293,6 @@ export class ProjectManager {
      */
     async saveProjectToNAS(projectName) {
         try {
-            // NAS 연결 확인
-            if (!this.nasManager.isConnected) {
-                // 로그인 모달 표시
-                const credentials = await this.showNASLoginModal();
-                await this.nasManager.connect(credentials.username, credentials.password);
-            }
-
             // 프로젝트 데이터 준비
             const state = this.dataStore.getState();
             const exportData = {
@@ -477,13 +361,6 @@ export class ProjectManager {
      */
     async listProjectsFromNAS() {
         try {
-            // NAS 연결 확인
-            if (!this.nasManager.isConnected) {
-                // 로그인 모달 표시
-                const credentials = await this.showNASLoginModal();
-                await this.nasManager.connect(credentials.username, credentials.password);
-            }
-
             const projects = await this.nasManager.listProjects();
             return projects;
         } catch (error) {
@@ -499,13 +376,6 @@ export class ProjectManager {
      */
     async loadProjectFromNAS(filename) {
         try {
-            // NAS 연결 확인
-            if (!this.nasManager.isConnected) {
-                // 로그인 모달 표시
-                const credentials = await this.showNASLoginModal();
-                await this.nasManager.connect(credentials.username, credentials.password);
-            }
-
             // NAS에서 파일 불러오기
             const jsonString = await this.nasManager.loadProject(filename);
             const importData = JSON.parse(jsonString);

@@ -1,8 +1,49 @@
 /**
- * Vercel Serverless Function - NAS 파일 저장
+ * Vercel Serverless Function - NAS 파일 저장 (자동 인증)
  * POST /api/nas-save
- * Body: { sessionId: string, filename: string, content: string }
+ * Body: { filename: string, content: string }
  */
+
+// NAS 로그인 헬퍼 함수
+async function getNasSession() {
+    const nasHost = process.env.NAS_HOST;
+    const nasPort = process.env.NAS_PORT || '5001';
+    const nasProtocol = process.env.NAS_PROTOCOL || 'https';
+    const nasUsername = process.env.NAS_USERNAME;
+    const nasPassword = process.env.NAS_PASSWORD;
+    const nasBaseUrl = `${nasProtocol}://${nasHost}:${nasPort}`;
+
+    const loginUrl = `${nasBaseUrl}/webapi/auth.cgi`;
+    const params = new URLSearchParams({
+        api: 'SYNO.API.Auth',
+        version: '7',
+        method: 'login',
+        account: nasUsername,
+        passwd: nasPassword,
+        session: 'FileStation',
+        format: 'sid'
+    });
+
+    const response = await fetch(`${loginUrl}?${params.toString()}`, {
+        method: 'GET'
+    });
+
+    if (!response.ok) {
+        throw new Error(`NAS connection failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.success) {
+        return {
+            sessionId: data.data.sid,
+            baseUrl: nasBaseUrl
+        };
+    } else {
+        throw new Error(data.error?.msg || 'Authentication failed');
+    }
+}
+
 export default async function handler(req, res) {
     // CORS 헤더 설정
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -18,24 +59,21 @@ export default async function handler(req, res) {
     }
 
     try {
-        const { sessionId, filename, content } = req.body;
+        const { filename, content } = req.body;
 
-        if (!sessionId || !filename || !content) {
+        if (!filename || !content) {
             return res.status(400).json({ 
-                error: 'Session ID, filename, and content are required' 
+                error: 'Filename and content are required' 
             });
         }
 
-        // 환경변수에서 NAS 설정 가져오기
-        const nasHost = process.env.NAS_HOST;
-        const nasPort = process.env.NAS_PORT || '5000';
-        const nasProtocol = process.env.NAS_PROTOCOL || 'http';
+        // 자동 인증
+        const session = await getNasSession();
         const nasProjectFolder = process.env.NAS_PROJECT_FOLDER || '/volume1/projects';
-        const nasBaseUrl = `${nasProtocol}://${nasHost}:${nasPort}`;
 
         // 폴더가 없으면 생성 시도
         try {
-            const createUrl = `${nasBaseUrl}/webapi/FileStation/create_folder.cgi`;
+            const createUrl = `${session.baseUrl}/webapi/FileStation/create_folder.cgi`;
             const createParams = new URLSearchParams({
                 api: 'SYNO.FileStation.CreateFolder',
                 version: '2',
@@ -43,7 +81,7 @@ export default async function handler(req, res) {
                 folder_path: nasProjectFolder,
                 name: '',
                 force_parent: 'true',
-                _sid: sessionId
+                _sid: session.sessionId
             });
 
             await fetch(`${createUrl}?${createParams.toString()}`, {
@@ -55,7 +93,7 @@ export default async function handler(req, res) {
         }
 
         // 파일 업로드
-        const uploadUrl = `${nasBaseUrl}/webapi/FileStation/upload.cgi`;
+        const uploadUrl = `${session.baseUrl}/webapi/FileStation/upload.cgi`;
         
         // form-data 패키지 사용 (파일 업로드에 필요)
         const FormData = (await import('form-data')).default;
@@ -69,7 +107,7 @@ export default async function handler(req, res) {
         });
         formData.append('path', nasProjectFolder);
         formData.append('overwrite', 'true');
-        formData.append('_sid', sessionId);
+        formData.append('_sid', session.sessionId);
 
         const response = await fetch(uploadUrl, {
             method: 'POST',

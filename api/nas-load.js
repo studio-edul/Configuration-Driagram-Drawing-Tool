@@ -1,7 +1,48 @@
 /**
- * Vercel Serverless Function - NAS 파일 불러오기
- * GET /api/nas-load?sessionId=xxx&filename=xxx
+ * Vercel Serverless Function - NAS 파일 불러오기 (자동 인증)
+ * GET /api/nas-load?filename=xxx
  */
+
+// NAS 로그인 헬퍼 함수
+async function getNasSession() {
+    const nasHost = process.env.NAS_HOST;
+    const nasPort = process.env.NAS_PORT || '5001';
+    const nasProtocol = process.env.NAS_PROTOCOL || 'https';
+    const nasUsername = process.env.NAS_USERNAME;
+    const nasPassword = process.env.NAS_PASSWORD;
+    const nasBaseUrl = `${nasProtocol}://${nasHost}:${nasPort}`;
+
+    const loginUrl = `${nasBaseUrl}/webapi/auth.cgi`;
+    const params = new URLSearchParams({
+        api: 'SYNO.API.Auth',
+        version: '7',
+        method: 'login',
+        account: nasUsername,
+        passwd: nasPassword,
+        session: 'FileStation',
+        format: 'sid'
+    });
+
+    const response = await fetch(`${loginUrl}?${params.toString()}`, {
+        method: 'GET'
+    });
+
+    if (!response.ok) {
+        throw new Error(`NAS connection failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.success) {
+        return {
+            sessionId: data.data.sid,
+            baseUrl: nasBaseUrl
+        };
+    } else {
+        throw new Error(data.error?.msg || 'Authentication failed');
+    }
+}
+
 export default async function handler(req, res) {
     // CORS 헤더 설정
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -17,30 +58,27 @@ export default async function handler(req, res) {
     }
 
     try {
-        const { sessionId, filename } = req.query;
+        const { filename } = req.query;
 
-        if (!sessionId || !filename) {
+        if (!filename) {
             return res.status(400).json({ 
-                error: 'Session ID and filename are required' 
+                error: 'Filename is required' 
             });
         }
 
-        // 환경변수에서 NAS 설정 가져오기
-        const nasHost = process.env.NAS_HOST;
-        const nasPort = process.env.NAS_PORT || '5000';
-        const nasProtocol = process.env.NAS_PROTOCOL || 'http';
+        // 자동 인증
+        const session = await getNasSession();
         const nasProjectFolder = process.env.NAS_PROJECT_FOLDER || '/volume1/projects';
-        const nasBaseUrl = `${nasProtocol}://${nasHost}:${nasPort}`;
 
         // 파일 다운로드 API 호출
-        const downloadUrl = `${nasBaseUrl}/webapi/FileStation/download.cgi`;
+        const downloadUrl = `${session.baseUrl}/webapi/FileStation/download.cgi`;
         const filePath = `${nasProjectFolder}/${filename}`;
         const params = new URLSearchParams({
             api: 'SYNO.FileStation.Download',
             version: '2',
             method: 'download',
             path: filePath,
-            _sid: sessionId
+            _sid: session.sessionId
         });
 
         const response = await fetch(`${downloadUrl}?${params.toString()}`, {
