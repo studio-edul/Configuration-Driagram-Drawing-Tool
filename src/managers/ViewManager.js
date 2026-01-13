@@ -139,30 +139,45 @@ export class ViewManager {
             return;
         }
 
-        const data = this.dataStore.getState();
-        const success = window.app.pptExportManager.exportToPPT(
-            data.nodes, 
-            {
-                configurationConnections: data.configurationConnections || {},
-                installationConnections: data.installationConnections || {},
-                networkConnections: data.networkConnections || {}
-            },
-            data.meta.hardwareList
-        );
-
-        if (success) {
+        try {
             // Visual feedback
             const originalText = this.exportButton.innerHTML;
-            this.exportButton.innerHTML = '<i data-lucide="download" class="w-4 h-4"></i> Downloading...';
-
+            this.exportButton.innerHTML = '<i data-lucide="loader" class="w-4 h-4 animate-spin"></i> Exporting...';
+            this.exportButton.disabled = true;
             if (window.lucide) window.lucide.createIcons();
 
-            setTimeout(() => {
-                this.exportButton.innerHTML = originalText;
+            const data = this.dataStore.getState();
+            const success = await window.app.pptExportManager.exportToPPT(
+                data.nodes, 
+                {
+                    configurationConnections: data.configurationConnections || {},
+                    installationConnections: data.installationConnections || {},
+                    networkConnections: data.networkConnections || {}
+                },
+                data.meta.hardwareList
+            );
+
+            if (success) {
+                this.exportButton.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> Exported!';
                 if (window.lucide) window.lucide.createIcons();
-            }, 2000);
-        } else {
-            alert('Failed to export PPT. Please try again.');
+
+                setTimeout(() => {
+                    this.exportButton.innerHTML = originalText;
+                    this.exportButton.disabled = false;
+                    if (window.lucide) window.lucide.createIcons();
+                }, 2000);
+            } else {
+                this.exportButton.innerHTML = originalText;
+                this.exportButton.disabled = false;
+                if (window.lucide) window.lucide.createIcons();
+            }
+        } catch (error) {
+            console.error('PPT export error:', error);
+            alert('PPT 내보내기 중 오류가 발생했습니다: ' + error.message);
+            const originalText = this.exportButton.innerHTML;
+            this.exportButton.innerHTML = originalText;
+            this.exportButton.disabled = false;
+            if (window.lucide) window.lucide.createIcons();
         }
     }
 

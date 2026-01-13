@@ -39,59 +39,55 @@
 
 ## 🔧 구현 방식 선택
 
-### 옵션 A: Synology DSM API (FileStation)
-- [ ] 선택 여부: `□`
-- [ ] 장점: 공식 API, 안정적, 기능 풍부
-- [ ] 단점: CORS 이슈 가능성, 브라우저에서 직접 호출 시 제한
+### 옵션 A: Synology DSM API (FileStation) - [현재 선택됨: 내부망 중심]
+- [x] 선택 여부: `■`
+- [ ] 장점: 공식 API, 안정적, 추가 서버 불필요 (내부망 환경 최적)
+- [ ] 단점: CORS 이슈 해결 필요, 외부망 접속 제한
 - [ ] 필요한 작업:
   - [ ] API 엔드포인트 확인 (`/webapi/FileStation/...`)
   - [ ] 세션 기반 인증 구현
-  - [ ] CORS 해결 방법 결정 (프록시 또는 NAS 설정)
+  - [ ] 내부망 통신 확인 및 CORS 우회 설정
 
-### 옵션 C: 백엔드 프록시 서버
+### 옵션 C: 백엔드 프록시 서버 (Vercel) - [현재 작업 안함: 추후 검토]
 - [ ] 선택 여부: `□`
-- [ ] 장점: CORS 우회, 보안 강화, 유연한 구현
-- [ ] 단점: 추가 서버 필요, 배포 및 유지보수 필요
+- [ ] 상태: 외부망 접속 필요 시 단계적으로 도입 예정
+- [ ] 장점: CORS 우회, 외부망에서 클라우드처럼 접속 가능
+- [ ] 단점: 추가 서버 구축 필요
 - [ ] 플랫폼 선택:
-  - [ ] Node.js (Express)
-  - [ ] Vercel Serverless Functions
-  - [ ] 기타: `_________________`
-- [ ] 필요한 작업:
+  - [ ] Vercel Serverless Functions (작업 보류)
+- [ ] 필요한 작업: (추후 진행)
   - [ ] 프록시 서버 구축
-  - [ ] NAS API 호출 로직 구현
-  - [ ] 인증 정보 관리 방법 결정
+  - [ ] NAS API 호출 로직 이관
 
 ---
 
 ## 📁 파일 구조 계획
 
 ### 새로 생성할 파일
-- [ ] `src/config/nas-config.js` - NAS 설정 파일
-- [ ] `src/managers/NASManager.js` - NAS API 클라이언트
-- [ ] (옵션 C 선택 시) `server/` 디렉토리 및 관련 파일
+- [ ] `src/config/nas-config.js` - NAS 설정 파일 (내부망 접속 정보 전용)
+- [ ] `src/managers/NASManager.js` - NAS API 클라이언트 (내부망 직접 통신)
 
 ### 수정할 파일
-- [ ] `src/managers/ProjectManager.js` - 저장/불러오기 로직 추가
+- [ ] `src/managers/ProjectManager.js` - 저장/불러오기 로직 추가 (내부망 연결 실패 시 로컬 저장 유도)
 - [ ] `index.html` - UI 버튼 추가 (NAS에서 불러오기)
 
 ---
 
-## 🚀 개발 단계별 체크리스트
+## 🚀 개발 단계별 체크리스트 (내부망 우선 구현)
 
-### Phase 1: NAS 연결 설정 및 인증 모듈
+### Phase 1: 내부망 NAS 연결 및 인증
 - [ ] `src/config/nas-config.js` 생성
-  - [ ] NAS 접속 정보 저장 구조 설계
-  - [ ] 환경변수 또는 설정 파일 방식 결정
+  - [ ] 내부 IP 주소 기반 설정 (예: 192.168.x.x)
 - [ ] `src/managers/NASManager.js` 생성
-  - [ ] 인증 기능 구현 (DSM API 세션 로그인)
-  - [ ] 연결 테스트 기능 구현
-  - [ ] 에러 처리 로직 추가
+  - [ ] 브라우저 직접 통신을 통한 인증 구현 (Option A)
+  - [ ] 네트워크 도달 가능성(Ping/Fetch) 확인 로직
+  - [ ] **외부망 접속 시 처리**: NAS 연결 실패 시 "로컬 저장 모드" 활성화 알림
 
-### Phase 2: 프로젝트 저장 기능 구현
+### Phase 2: 프로젝트 저장 기능 구현 (이름 지정 저장)
 - [ ] `ProjectManager.js` 수정
-  - [ ] `saveProjectToNAS(projectData)` 메서드 추가
-  - [ ] `exportProject()` 수정 (로컬 다운로드 + NAS 업로드)
-  - [ ] 저장 성공/실패 피드백 추가
+  - [ ] `saveProjectToNAS(projectName)` 메서드 추가
+  - [ ] 사용자로부터 프로젝트 이름을 입력받아 NAS에 파일 생성
+  - [ ] **외부망 시나리오**: NAS 연결 불가 시 기존처럼 `.json` 파일 로컬 다운로드로 자동 전환
 - [ ] 저장 데이터 구조 확인
   - [ ] `hardwareList` 포함 확인
   - [ ] `hardwareListMetadata` 포함 확인
@@ -157,6 +153,22 @@
 
 ### API 문서 참조
 - 공식 문서: https://global.download.synology.com/download/Document/Software/DeveloperGuide/Package/FileStation/All/enu/Synology_File_Station_API_Guide.pdf
+
+---
+
+## 💡 추가 고려사항 및 정책
+
+### 외부망 접속 정책 (현재 기준)
+1. **작업**: 웹페이지 접속 및 편집 작업은 어디서나 가능.
+2. **저장**: 
+   - 내부망 접속 시: NAS에 직접 저장 (이름 지정).
+   - 외부망 접속 시: NAS 자동 비활성화 -> 기존 방식대로 로컬 `.json` 다운로드.
+3. **불러오기**:
+   - 내부망 접속 시: NAS 목록에서 불러오기 가능.
+   - 외부망 접속 시: 로컬 파일 수동 업로드만 가능.
+
+### 향후 확장 계획
+- 외부망에서도 클라우드 기능을 사용하려면 **Vercel 프록시(Option C)** 개발 단계로 전환 필요.
 
 ---
 

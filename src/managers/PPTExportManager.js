@@ -26,7 +26,7 @@ export class PPTExportManager {
         this.dataStore = dataStore;
     }
 
-    exportToPPT(nodes, connectionsData, hardwareList) {
+    async exportToPPT(nodes, connectionsData, hardwareList) {
         try {
             const data = this.dataStore.getState();
             
@@ -135,17 +135,48 @@ export class PPTExportManager {
             // Get hardware list from actual web table (HardwareListManager)
             this.addHardwareListSlides(pres);
 
-            // Save File
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-            const fileName = `Hardware_Config_${timestamp}.pptx`;
+            // Save File with file picker
+            // Default filename format: SystemConfiguration_IMfine_(오늘 날짜)
+            const today = new Date();
+            const dateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+            const defaultFileName = `SystemConfiguration_IMfine_${dateStr}.pptx`;
             
-            pres.writeFile({ fileName: fileName }).then(() => {
-                // File saved successfully
-            }).catch(err => {
-                console.error('Error saving PPT file:', err);
-            });
-
-            return true;
+            // Try to use File System Access API (modern browsers)
+            if ('showSaveFilePicker' in window) {
+                try {
+                    const fileHandle = await window.showSaveFilePicker({
+                        suggestedName: defaultFileName,
+                        types: [{
+                            description: 'PowerPoint Presentation',
+                            accept: {
+                                'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx']
+                            }
+                        }]
+                    });
+                    
+                    // Generate PPTX blob using PptxGenJS write method
+                    const blob = await pres.write({ outputType: 'blob' });
+                    
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+                    
+                    return true;
+                } catch (error) {
+                    // User cancelled the file picker
+                    if (error.name === 'AbortError') {
+                        return false;
+                    }
+                    console.warn('File System Access API failed, falling back to download:', error);
+                    // Fallback to default download
+                    await pres.writeFile({ fileName: defaultFileName });
+                    return true;
+                }
+            } else {
+                // Fallback to default download for older browsers
+                await pres.writeFile({ fileName: defaultFileName });
+                return true;
+            }
         } catch (error) {
             console.error('Failed to export PPT:', error);
             return false;

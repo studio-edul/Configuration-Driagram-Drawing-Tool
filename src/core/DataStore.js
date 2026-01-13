@@ -8,7 +8,7 @@ export class DataStore {
                 floorPlanImage: null,
                 bomMetadata: {},
                 hardwareListMetadata: {}, // Store remark and other metadata for hardware list items
-                projectName: 'The First Look 2026' // Project name for hardware list tables
+                projectName: 'ProjectName_SystemConfiguration_IMfine' // Project name for hardware list tables
             },
             nodes: {},
             configurationConnections: {}, // Connections created in CONFIGURATION mode
@@ -300,7 +300,7 @@ export class DataStore {
                 meta: {
                     mode: state.meta.mode,
                     floorPlanImage: state.meta.floorPlanImage || null,
-                    projectName: state.meta.projectName || 'Untitled Project',
+                    projectName: state.meta.projectName || 'ProjectName_SystemConfiguration_IMfine',
                     hardwareList: state.meta.hardwareList || [],
                     hardwareListMetadata: state.meta.hardwareListMetadata || {},
                     bomMetadata: state.meta.bomMetadata || {},
@@ -363,7 +363,7 @@ export class DataStore {
             this.projectData.meta = {
                 mode: data.meta.mode || 'CONFIGURATION',
                 floorPlanImage: data.meta.floorPlanImage || null,
-                projectName: data.meta.projectName || 'The First Look 2026',
+                projectName: data.meta.projectName || 'ProjectName_SystemConfiguration_IMfine',
                 hardwareList: data.meta.hardwareList || [],
                 hardwareListMetadata: data.meta.hardwareListMetadata || {},
                 bomMetadata: data.meta.bomMetadata || {},
