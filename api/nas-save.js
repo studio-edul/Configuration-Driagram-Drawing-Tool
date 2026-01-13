@@ -57,8 +57,8 @@ export default async function handler(req, res) {
         // 파일 업로드
         const uploadUrl = `${nasBaseUrl}/webapi/FileStation/upload.cgi`;
         
-        // Node.js 환경에서 FormData 생성 (Node.js 18+ 내장 FormData 사용)
-        const FormData = globalThis.FormData || (await import('form-data')).default;
+        // form-data 패키지 사용 (파일 업로드에 필요)
+        const FormData = (await import('form-data')).default;
         const formData = new FormData();
         
         // 파일 내용을 Buffer로 변환하여 추가
@@ -73,7 +73,8 @@ export default async function handler(req, res) {
 
         const response = await fetch(uploadUrl, {
             method: 'POST',
-            body: formData
+            body: formData,
+            headers: formData.getHeaders()
         });
 
         if (!response.ok) {

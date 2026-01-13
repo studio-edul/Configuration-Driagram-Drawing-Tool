@@ -1,0 +1,12 @@
+{
+  "name": "configuration-diagram-drawing-tool",
+  "version": "1.0.0",
+  "description": "Hardware Configuration Diagram Drawing Tool",
+  "private": true,
+  "dependencies": {
+    "form-data": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
