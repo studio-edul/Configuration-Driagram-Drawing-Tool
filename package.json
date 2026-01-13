@@ -3,8 +3,17 @@
   "version": "1.0.0",
   "description": "Hardware Configuration Diagram Drawing Tool",
   "private": true,
+  "scripts": {
+    "start:dev": "vercel dev --listen 3000",
+    "serve": "npx http-server . -p 5500 -c-1",
+    "build": "echo 'No build required'"
+  },
   "dependencies": {
+    "axios": "^1.13.2",
     "form-data": "^4.0.0"
+  },
+  "devDependencies": {
+    "vercel": "^34.0.0"
   },
   "engines": {
     "node": ">=18.0.0"

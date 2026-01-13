@@ -74,7 +74,7 @@ export class App {
 
     initProjectFileButtons() {
         const importInput = document.getElementById('input-import-project');
-        
+
         // Save button with dropdown
         const saveButton = document.getElementById('btn-save');
         const saveDropdown = document.getElementById('save-dropdown');
@@ -86,10 +86,10 @@ export class App {
             saveButton.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const isHidden = saveDropdown.classList.contains('hidden');
-                
+
                 // Close other dropdowns
                 document.getElementById('load-dropdown')?.classList.add('hidden');
-                
+
                 if (isHidden) {
                     saveDropdown.classList.remove('hidden');
                 } else {
@@ -134,10 +134,10 @@ export class App {
             loadButton.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const isHidden = loadDropdown.classList.contains('hidden');
-                
+
                 // Close other dropdowns
                 document.getElementById('save-dropdown')?.classList.add('hidden');
-                
+
                 if (isHidden) {
                     loadDropdown.classList.remove('hidden');
                 } else {
@@ -156,36 +156,68 @@ export class App {
 
             // Load from NAS
             if (loadNASButton) {
+                const nasFileModal = document.getElementById('nas-file-modal');
+                const nasFileList = document.getElementById('nas-file-list');
+                const btnCloseNasModal = document.getElementById('btn-close-nas-modal');
+                const btnCancelNasLoad = document.getElementById('btn-cancel-nas-load');
+
+                // Close/Cancel handlers
+                const closeNasModal = () => {
+                    nasFileModal.classList.add('hidden');
+                };
+
+                if (btnCloseNasModal) btnCloseNasModal.addEventListener('click', closeNasModal);
+                if (btnCancelNasLoad) btnCancelNasLoad.addEventListener('click', closeNasModal);
+
                 loadNASButton.addEventListener('click', async (e) => {
                     e.stopPropagation();
                     loadDropdown.classList.add('hidden');
+
+                    // Show modal
+                    nasFileModal.classList.remove('hidden');
+                    nasFileList.innerHTML = '<div class="text-center text-slate-400 py-8 text-sm">Loading files...</div>';
+
                     try {
                         const projects = await this.projectManager.listProjectsFromNAS();
-                        
+
                         if (projects.length === 0) {
-                            alert('NAS에 저장된 프로젝트가 없습니다.');
+                            nasFileList.innerHTML = '<div class="text-center text-slate-400 py-8 text-sm">No projects found.</div>';
                             return;
                         }
 
-                        // 프로젝트 목록 표시 모달
-                        const projectList = projects.map((p, i) => 
-                            `${i + 1}. ${p.name} (${new Date(p.modified * 1000).toLocaleString()})`
-                        ).join('\n');
+                        // Render list
+                        nasFileList.innerHTML = '';
+                        // Sort by modified date desc
+                        projects.sort((a, b) => b.modified - a.modified).forEach(project => {
+                            const date = new Date(project.modified * 1000).toLocaleString();
+                            const div = document.createElement('div');
+                            div.className = 'nas-file-item';
+                            div.innerHTML = `
+                                <i data-lucide="file-json" class="w-5 h-5 file-icon"></i>
+                                <div class="file-info">
+                                    <div class="file-name">${project.name}</div>
+                                    <div class="file-date">${date}</div>
+                                </div>
+                            `;
+                            div.addEventListener('click', async () => {
+                                try {
+                                    closeNasModal();
+                                    await this.projectManager.loadProjectFromNAS(project.name);
+                                    alert(`프로젝트 "${project.name}"를 불러왔습니다.`);
+                                } catch (error) {
+                                    console.error('Load error:', error);
+                                    alert('로드 실패: ' + error.message);
+                                }
+                            });
+                            nasFileList.appendChild(div);
+                        });
 
-                        const selection = prompt(`불러올 프로젝트 번호를 선택하세요:\n\n${projectList}\n\n번호 입력:`);
-                        const index = parseInt(selection) - 1;
+                        // Re-initialize icons for new elements
+                        if (window.lucide) lucide.createIcons();
 
-                        if (isNaN(index) || index < 0 || index >= projects.length) {
-                            alert('올바른 번호를 입력해주세요.');
-                            return;
-                        }
-
-                        const selectedProject = projects[index];
-                        await this.projectManager.loadProjectFromNAS(selectedProject.name);
-                        alert(`프로젝트 "${selectedProject.name}"를 불러왔습니다.`);
                     } catch (error) {
                         console.error('Load from NAS error:', error);
-                        alert('NAS에서 프로젝트를 불러오는 중 오류가 발생했습니다: ' + error.message);
+                        nasFileList.innerHTML = `<div class="text-center text-red-500 py-8 text-sm">Error loading files: ${error.message}</div>`;
                     }
                 });
             }

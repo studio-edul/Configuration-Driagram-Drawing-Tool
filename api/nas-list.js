@@ -23,8 +23,18 @@ async function getNasSession() {
         format: 'sid'
     });
 
+    // Node.js 환경에서 SSL 인증서 검증 무시 (자체 서명 인증서용)
+    // undici의 Agent를 사용하여 SSL 검증 무시
+    const { Agent } = await import('undici');
+    const agent = new Agent({
+        connect: {
+            rejectUnauthorized: false
+        }
+    });
+
     const response = await fetch(`${loginUrl}?${params.toString()}`, {
-        method: 'GET'
+        method: 'GET',
+        dispatcher: agent
     });
 
     if (!response.ok) {
@@ -58,12 +68,26 @@ export default async function handler(req, res) {
     }
 
     try {
-        // 자동 인증
         const session = await getNasSession();
-        const nasProjectFolder = process.env.NAS_PROJECT_FOLDER || '/volume1/projects';
+        let nasProjectFolder = process.env.NAS_PROJECT_FOLDER || '/volume1/projects';
+
+        // Remove /volume number prefix if present (e.g. /volume1/web -> /web)
+        if (nasProjectFolder.match(/^\/volume\d+/)) {
+            nasProjectFolder = nasProjectFolder.replace(/^\/volume\d+/, '');
+        }
+
+        // axios 및 https 모듈 로드
+        const axios = (await import('axios')).default;
+        const https = await import('https');
+
+        // SSL 인증서 검증 무시를 위한 https agent 생성
+        const httpsAgent = new https.Agent({
+            rejectUnauthorized: false
+        });
 
         // NAS 파일 목록 API 호출
-        const listUrl = `${session.baseUrl}/webapi/FileStation/list.cgi`;
+        // list.cgi 대신 entry.cgi 사용 (표준 엔드포인트)
+        const listUrl = `${session.baseUrl}/webapi/entry.cgi`;
         const params = new URLSearchParams({
             api: 'SYNO.FileStation.List',
             version: '2',
@@ -72,44 +96,62 @@ export default async function handler(req, res) {
             _sid: session.sessionId
         });
 
-        const response = await fetch(`${listUrl}?${params.toString()}`, {
-            method: 'GET'
-        });
+        console.log('[nas-list] Calling NAS API (POST):', listUrl);
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('[nas-list] HTTP error:', response.status, errorText);
-            return res.status(response.status).json({
-                error: `Failed to list files: ${response.status}`,
-                details: errorText
+        try {
+            const response = await axios.post(listUrl, params, {
+                httpsAgent: httpsAgent,
+                headers: {
+                    'Cookie': `id=${session.sessionId}`,
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                validateStatus: function (status) {
+                    return status < 500; // 500 이상만 에러로 처리
+                }
             });
+
+            if (response.status !== 200) {
+                console.error('[nas-list] HTTP error:', response.status, response.data);
+                return res.status(response.status).json({
+                    error: `Failed to list files: ${response.status}`,
+                    details: response.data
+                });
+            }
+
+            const data = response.data;
+
+            if (data.success) {
+                // .cdt 파일만 필터링
+                const files = data.data.files || [];
+                const projects = files
+                    .filter(file => file.name.endsWith('.cdt'))
+                    .map(file => ({
+                        name: file.name,
+                        path: file.path,
+                        size: file.size,
+                        modified: file.mtime
+                    }));
+
+                return res.status(200).json({
+                    success: true,
+                    projects
+                });
+            } else {
+                console.error('[nas-list] NAS API error:', data.error);
+                return res.status(400).json({
+                    error: 'Failed to list files',
+                    message: data.error?.msg || 'Unknown error',
+                    code: data.error?.code
+                });
+            }
+        } catch (axiosError) {
+            console.error('[nas-list] Axios error:', axiosError.message);
+            if (axiosError.response) {
+                console.error('[nas-list] Response data:', axiosError.response.data);
+            }
+            throw axiosError;
         }
 
-        const data = await response.json();
-
-        if (data.success) {
-            // .cdt 파일만 필터링
-            const files = data.data.files || [];
-            const projects = files
-                .filter(file => file.name.endsWith('.cdt'))
-                .map(file => ({
-                    name: file.name,
-                    path: file.path,
-                    size: file.size,
-                    modified: file.mtime
-                }));
-
-            return res.status(200).json({
-                success: true,
-                projects
-            });
-        } else {
-            return res.status(400).json({
-                error: 'Failed to list files',
-                message: data.error?.msg || 'Unknown error',
-                code: data.error?.code
-            });
-        }
     } catch (error) {
         console.error('[nas-list] Error:', error);
         return res.status(500).json({

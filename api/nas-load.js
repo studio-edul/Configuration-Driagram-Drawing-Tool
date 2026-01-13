@@ -23,8 +23,18 @@ async function getNasSession() {
         format: 'sid'
     });
 
+    // Node.js 환경에서 SSL 인증서 검증 무시 (자체 서명 인증서용)
+    // undici의 Agent를 사용하여 SSL 검증 무시
+    const { Agent } = await import('undici');
+    const agent = new Agent({
+        connect: {
+            rejectUnauthorized: false
+        }
+    });
+
     const response = await fetch(`${loginUrl}?${params.toString()}`, {
-        method: 'GET'
+        method: 'GET',
+        dispatcher: agent
     });
 
     if (!response.ok) {
@@ -61,17 +71,32 @@ export default async function handler(req, res) {
         const { filename } = req.query;
 
         if (!filename) {
-            return res.status(400).json({ 
-                error: 'Filename is required' 
+            return res.status(400).json({
+                error: 'Filename is required'
             });
         }
 
         // 자동 인증
         const session = await getNasSession();
-        const nasProjectFolder = process.env.NAS_PROJECT_FOLDER || '/volume1/projects';
+        let nasProjectFolder = process.env.NAS_PROJECT_FOLDER || '/volume1/projects';
+
+        // Remove /volume number prefix if present (e.g. /volume1/web -> /web)
+        if (nasProjectFolder.match(/^\/volume\d+/)) {
+            nasProjectFolder = nasProjectFolder.replace(/^\/volume\d+/, '');
+        }
+
+        // axios 및 https 모듈 로드
+        const axios = (await import('axios')).default;
+        const https = await import('https');
+
+        // SSL 인증서 검증 무시를 위한 https agent 생성
+        const httpsAgent = new https.Agent({
+            rejectUnauthorized: false
+        });
 
         // 파일 다운로드 API 호출
-        const downloadUrl = `${session.baseUrl}/webapi/FileStation/download.cgi`;
+        // download.cgi 대신 entry.cgi 사용 (표준 엔드포인트)
+        const downloadUrl = `${session.baseUrl}/webapi/entry.cgi`;
         const filePath = `${nasProjectFolder}/${filename}`;
         const params = new URLSearchParams({
             api: 'SYNO.FileStation.Download',
@@ -81,43 +106,61 @@ export default async function handler(req, res) {
             _sid: session.sessionId
         });
 
-        const response = await fetch(`${downloadUrl}?${params.toString()}`, {
-            method: 'GET'
-        });
+        console.log('[nas-load] Calling NAS API:', downloadUrl);
+        console.log('[nas-load] File path:', filePath);
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('[nas-load] HTTP error:', response.status, errorText);
-            return res.status(response.status).json({
-                error: `Failed to load file: ${response.status}`,
-                details: errorText
-            });
-        }
-
-        const text = await response.text();
-
-        // JSON 응답인지 확인 (에러인 경우)
         try {
-            const jsonData = JSON.parse(text);
-            if (!jsonData.success) {
-                return res.status(400).json({
-                    error: 'Failed to load file',
-                    message: jsonData.error?.msg || 'Unknown error',
-                    code: jsonData.error?.code
+            const response = await axios.get(`${downloadUrl}?${params.toString()}`, {
+                httpsAgent: httpsAgent,
+                headers: {
+                    'Cookie': `id=${session.sessionId}`
+                },
+                responseType: 'text', // 텍스트로 받음 (JSON 파일이므로)
+                validateStatus: function (status) {
+                    return status < 500;
+                }
+            });
+
+            if (response.status !== 200) {
+                console.error('[nas-load] HTTP error:', response.status);
+                return res.status(response.status).json({
+                    error: `Failed to load file: ${response.status}`,
+                    details: response.data
                 });
             }
-        } catch (e) {
-            // JSON이 아니면 파일 내용이므로 그대로 반환
+
+            // response.data가 이미 객체(JSON)일 수도 있고, 문자열일 수도 있음
+            const content = typeof response.data === 'object' ? JSON.stringify(response.data) : response.data;
+
+            // NAS가 에러 JSON을 반환했는지 확인 (성공 시에는 파일 내용 자체가 옴)
+            try {
+                // 만약 파일 내용이 우연히 success:false를 포함한 JSON이라면 오판할 수 있으나,
+                // Synology 에러는 보통 {error: {code: ...}, success: false} 형태임.
+                if (typeof response.data === 'object' && response.data.success === false) {
+                    console.error('[nas-load] NAS API error:', response.data.error);
+                    return res.status(400).json({
+                        error: 'Failed to load file',
+                        message: response.data.error?.msg || 'Unknown error',
+                        code: response.data.error?.code
+                    });
+                }
+            } catch (e) {
+                // Ignore parsing error
+            }
+
             return res.status(200).json({
                 success: true,
-                content: text
+                content: content
             });
+
+        } catch (axiosError) {
+            console.error('[nas-load] Axios error:', axiosError.message);
+            if (axiosError.response) {
+                console.error('[nas-load] Response data:', axiosError.response.data);
+            }
+            throw axiosError;
         }
 
-        return res.status(200).json({
-            success: true,
-            content: text
-        });
     } catch (error) {
         console.error('[nas-load] Error:', error);
         return res.status(500).json({

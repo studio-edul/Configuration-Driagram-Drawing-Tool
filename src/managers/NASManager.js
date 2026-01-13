@@ -58,6 +58,7 @@ export class NASManager {
     async saveProject(filename, content) {
         try {
             const vercelApiUrl = NAS_CONFIG.getVercelApiUrl();
+            console.log('[NASManager] Calling API:', `${vercelApiUrl}/api/nas-save`);
             const response = await fetch(`${vercelApiUrl}/api/nas-save`, {
                 method: 'POST',
                 headers: {
@@ -69,17 +70,27 @@ export class NASManager {
                 })
             });
 
+            console.log('[NASManager] Response status:', response.status, response.statusText);
+
             if (!response.ok) {
                 // 응답이 JSON인지 확인
                 const contentType = response.headers.get('content-type');
                 let errorData;
-                if (contentType && contentType.includes('application/json')) {
-                    errorData = await response.json();
-                } else {
-                    const errorText = await response.text();
-                    throw new Error(`HTTP ${response.status}: ${errorText || 'Server error'}`);
+                try {
+                    if (contentType && contentType.includes('application/json')) {
+                        errorData = await response.json();
+                        console.error('[NASManager] API Error Response:', errorData);
+                        throw new Error(errorData.message || errorData.error || `HTTP ${response.status}: ${JSON.stringify(errorData)}`);
+                    } else {
+                        const errorText = await response.text();
+                        console.error('[NASManager] API Error Text:', errorText);
+                        throw new Error(`HTTP ${response.status}: ${errorText || 'Server error'}`);
+                    }
+                } catch (parseError) {
+                    // JSON 파싱 실패 시
+                    console.error('[NASManager] Error parsing response:', parseError);
+                    throw new Error(`HTTP ${response.status}: Failed to parse error response - ${parseError.message}`);
                 }
-                throw new Error(errorData.message || errorData.error || `HTTP error! status: ${response.status}`);
             }
 
             const data = await response.json();

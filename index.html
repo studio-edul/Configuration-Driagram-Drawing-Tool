@@ -443,6 +443,30 @@
         </div>
     </div>
 
+    <!-- NAS File Selection Modal -->
+    <div id="nas-file-modal"
+        class="hidden fixed inset-0 bg-black/50 z-[100] flex items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl transform transition-all scale-100 flex flex-col max-h-[80vh]"
+            onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-slate-900">Load from NAS</h3>
+                <button id="btn-close-nas-modal" class="text-slate-400 hover:text-slate-600 transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <div id="nas-file-list" class="flex-1 overflow-y-auto custom-scrollbar border border-slate-200 rounded-lg bg-slate-50 p-2 space-y-1 min-h-[200px]">
+                <!-- File items will be populated here -->
+                <div class="text-center text-slate-400 py-8 text-sm">Loading files...</div>
+            </div>
+
+            <div class="flex justify-end mt-4 pt-4 border-t border-slate-200">
+                <button id="btn-cancel-nas-load"
+                    class="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-200 transition-all">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Entry Point -->
     <script type="module">
         // Load version and set it in the UI

@@ -23,8 +23,18 @@ export async function getNasSession() {
         format: 'sid'
     });
 
+    // Node.js 환경에서 SSL 인증서 검증 무시 (자체 서명 인증서용)
+    // undici의 Agent를 사용하여 SSL 검증 무시
+    const { Agent } = await import('undici');
+    const agent = new Agent({
+        connect: {
+            rejectUnauthorized: false
+        }
+    });
+
     const response = await fetch(`${loginUrl}?${params.toString()}`, {
-        method: 'GET'
+        method: 'GET',
+        dispatcher: agent
     });
 
     if (!response.ok) {
